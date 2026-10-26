@@ -20,6 +20,7 @@ let BYTES = null, R = null, SAVE_BTN = null, TITLE = '';
   add('⤓ <span class="lb">Download</span>', 'Download this PDF to your computer (⌘S)', download);
   add('＋ <span class="lb">VanoLib</span>', 'Add this PDF to your VanoAtlas library (My papers)', sendToVanoLib);
   add('❝ <span class="lb">Cite</span>', 'Copy the BibTeX of this paper', function () { Cite.paper(R, FILE, this); });
+  add('🔎 <span class="lb">Research</span>', 'Research panel: this paper, cited by, related papers, verified references, .bib export', () => Research.openPanel(R));
   add('☰ <span class="lb">Reading list</span>', 'Open your saved and recent PDFs', () => openTab(chrome.runtime.getURL('library.html')));
   add('↗', 'Open in Chrome’s built-in PDF viewer', () => { location.href = FILE + (FILE.includes('#') ? '&' : '#') + 'novanolib'; });
   document.addEventListener('keydown', e => {
@@ -55,6 +56,7 @@ let BYTES = null, R = null, SAVE_BTN = null, TITLE = '';
   const buf = BYTES;
   await R.open({ key: KEY, title: name, bytes: () => new Uint8Array(buf.slice(0)) });
   Cite.attach(R);
+  Research.attach(R);
   try { await Annot.attach(R, KEY); } catch (e) { console.warn('annotations', e); }
   try {
     const md = await R.pdf.getMetadata();
@@ -65,6 +67,11 @@ let BYTES = null, R = null, SAVE_BTN = null, TITLE = '';
   } catch (e) {}
   VL.touch(FILE, { title: TITLE, pages: R.pdf ? R.pdf.numPages : undefined });
   if (saved && !cached) VL.dbPut(KEY, BYTES).catch(() => {});
+  if (saved && !(await VL.textGet(KEY))) VL.index(KEY, R.pdf, { url: FILE, title: TITLE }).catch(() => {});
+  const goPage = +P.get('page'), goQ = (P.get('q') || '').trim();
+  const goTop = P.get('top') ? +P.get('top') + 14 : null;
+  if (goPage) { R.goto(goPage, goTop); await new Promise(r => setTimeout(r, 120)); R.onScroll(true); }
+  if (goQ) { const s = R.$('.rsearch'); s.classList.add('on'); s.querySelector('input').value = goQ; await R.search(goQ); }
 })();
 
 function openTab(url) { chrome.tabs.create({ url }); }
@@ -121,6 +128,7 @@ async function toggleSave() {
   const st = (await VL.get('st:' + KEY)) || {};
   await VL.save({ url: FILE, title: TITLE, pages: R.pdf ? R.pdf.numPages : st.pages, page: st.page || 1, size: BYTES.byteLength });
   try { await VL.dbPut(KEY, BYTES.slice(0)); } catch (e) {}
+  try { if (R.pdf) VL.index(KEY, R.pdf, { url: FILE, title: TITLE }).then(async () => { if (!(await VL.isSaved(FILE))) VL.textDel(KEY); }); } catch (e) {}
   paintSave(true);
   R.toast('Saved to your reading list ★');
 }
