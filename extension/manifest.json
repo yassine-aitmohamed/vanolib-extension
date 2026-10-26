@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "VanoLib Reader",
+  "version": "1.0.0",
+  "description": "Read PDFs in the VanoLib reader: sharp text, day / sepia / night, search, outline, highlights, citation cards, a reading list kept offline, one-click download, and sending to your VanoAtlas library.",
+  "permissions": [
+    "storage",
+    "tabs",
+    "webRequest",
+    "contextMenus",
+    "downloads",
+    "unlimitedStorage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "VanoLib Reader",
+    "default_icon": {
+      "16": "icons/16.png",
+      "32": "icons/32.png",
+      "48": "icons/48.png",
+      "128": "icons/128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+  "homepage_url": "https://github.com/yassine-aitmohamed/vanolib-extension"
+}
