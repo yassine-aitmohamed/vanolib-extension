@@ -1,6 +1,7 @@
 const P = new URLSearchParams(location.search);
 const FILE = P.get('file') || '';
-const KEY = VL.keyOf(FILE);
+const OVL = P.get('ovl') || '';
+const KEY = OVL ? 'ovl:' + OVL : VL.keyOf(FILE);
 let BYTES = null, R = null, SAVE_BTN = null, TITLE = '';
 
 (async () => {
@@ -16,18 +17,19 @@ let BYTES = null, R = null, SAVE_BTN = null, TITLE = '';
   });
   const rtb = R.rdr.querySelector('.rtb');
   const add = (html, title, fn) => { const b = document.createElement('button'); b.className = 'vl-x'; b.innerHTML = html; b.title = title; b.onclick = fn; rtb.appendChild(b); return b; };
-  SAVE_BTN = add('☆ <span class="lb">Save</span>', 'Save to your reading list (kept offline, ⌘D)', toggleSave);
+  if (!OVL) SAVE_BTN = add('☆ <span class="lb">Save</span>', 'Save to your reading list (kept offline, ⌘D)', toggleSave);
   add('⤓ <span class="lb">Download</span>', 'Download this PDF to your computer (⌘S)', download);
   add('＋ <span class="lb">VanoLib</span>', 'Add this PDF to your VanoAtlas library (My papers)', sendToVanoLib);
   add('❝ <span class="lb">Cite</span>', 'Copy the BibTeX of this paper', function () { Cite.paper(R, FILE, this); });
   add('🔎 <span class="lb">Research</span>', 'Research panel: this paper, cited by, related papers, verified references, .bib export', () => Research.openPanel(R));
   add('☰ <span class="lb">Reading list</span>', 'Open your saved and recent PDFs', () => openTab(chrome.runtime.getURL('library.html')));
-  add('↗', 'Open in Chrome’s built-in PDF viewer', () => { location.href = FILE + (FILE.includes('#') ? '&' : '#') + 'novanolib'; });
+  if (!OVL) add('↗', 'Open in Chrome’s built-in PDF viewer', () => { location.href = FILE + (FILE.includes('#') ? '&' : '#') + 'novanolib'; });
   document.addEventListener('keydown', e => {
     if (!(e.metaKey || e.ctrlKey)) return;
     const k = e.key.toLowerCase();
     if (k === 's') { e.preventDefault(); download(); } else if (k === 'd') { e.preventDefault(); toggleSave(); }
   }, true);
+  if (OVL) return openOverleaf();
   if (!FILE) { R.empty('<b>VanoLib Reader</b>Open a PDF in Chrome, or drop a file here.'); return; }
   const name = VL.nameOf(FILE);
   TITLE = name;
@@ -73,6 +75,24 @@ let BYTES = null, R = null, SAVE_BTN = null, TITLE = '';
   if (goPage) { R.goto(goPage, goTop); await new Promise(r => setTimeout(r, 120)); R.onScroll(true); }
   if (goQ) { const s = R.$('.rsearch'); s.classList.add('on'); s.querySelector('input').value = goQ; await R.search(goQ); }
 })();
+
+async function openOverleaf() {
+  TITLE = P.get('title') || 'Overleaf project';
+  document.title = TITLE + ' — VanoLib Reader';
+  chrome.runtime.onMessage.addListener(m => {
+    if (!m || m.type !== 'ovl-updated' || m.project !== OVL) return;
+    try { R.saveState(); } catch (e) {}
+    setTimeout(() => location.reload(), 150);
+  });
+  BYTES = await VL.dbGet(KEY);
+  if (!BYTES) { R.empty('<b>Overleaf</b>Compile the project in Overleaf, then click VanoLib again.'); return; }
+  const buf = BYTES;
+  await R.open({ key: KEY, title: TITLE, bytes: () => new Uint8Array(buf.slice(0)) });
+  R.title = TITLE; R.$('.title').textContent = TITLE;
+  Cite.attach(R);
+  Research.attach(R);
+  try { await Annot.attach(R, KEY); } catch (e) {}
+}
 
 function openTab(url) { chrome.tabs.create({ url }); }
 

@@ -139,6 +139,68 @@ const Ref = (() => {
     return p;
   }
 
+  const AXID = /arxiv\.org\/(?:abs|pdf)\/([0-9]{4}\.[0-9]{4,5}|[a-z\-]+(?:\.[A-Z]{2})?\/[0-9]{7})/i;
+  function sameTitle(a, b) {
+    const A = words(a), B = new Set(words(b));
+    if (!A.length || !B.size) return false;
+    const hit = A.filter(w => B.has(w)).length;
+    return hit / Math.max(A.length, B.size) >= 0.8;
+  }
+  const famOf = rec => norm((rec.authors && rec.authors[0] && rec.authors[0].family) || '').split(' ').pop();
+  function fromOpenAlex(w, rec) {
+    if (!w || (rec.title && w.title && !sameTitle(w.title, rec.title))) return '';
+    for (const l of w.locations || []) { const m = ((l.landing_page_url || '') + ' ' + (l.pdf_url || '')).match(AXID); if (m) return m[1].replace(/v\d+$/, ''); }
+    return '';
+  }
+  async function arxivOf(rec) {
+    if (rec.arxiv) return rec.arxiv;
+    if (rec.arxivChecked && Date.now() - rec.arxivChecked < 1000 * 60 * 60 * 24 * 7) return '';
+    let id = '';
+    const fam = famOf(rec);
+    if (rec.doi) { try { id = fromOpenAlex(await J('https://api.openalex.org/works/doi:' + encodeURIComponent(rec.doi) + '?select=title,locations'), rec); } catch (e) {} }
+    if (!id && rec.doi) {
+      try {
+        const j = await J('https://api.semanticscholar.org/graph/v1/paper/DOI:' + encodeURIComponent(rec.doi) + '?fields=title,externalIds');
+        if (!rec.title || sameTitle(j.title || '', rec.title)) id = ((j.externalIds || {}).ArXiv || '').replace(/v\d+$/, '');
+      } catch (e) {}
+    }
+    if (!id && rec.title) {
+      try {
+        const j = await J('https://api.openalex.org/works?per-page=5&select=title,locations,authorships,publication_year&filter=title.search:' + encodeURIComponent(norm(rec.title).slice(0, 200)));
+        for (const w of j.results || []) {
+          const au = (w.authorships || []).map(x => norm((x.author && x.author.display_name) || ''));
+          if (fam && !au.some(n => n.split(' ').includes(fam))) continue;
+          if ((id = fromOpenAlex(w, rec))) break;
+        }
+      } catch (e) {}
+    }
+    if (!id && rec.title) {
+      try {
+        const tw = words(rec.title).filter(x => !/^\d+$/.test(x)).slice(0, 10);
+        if (tw.length >= 2) {
+          const q = tw.map(x => 'ti:' + x).join(' AND ') + (fam ? ' AND au:' + fam : '');
+          for (const c of fromArxiv(await X('https://export.arxiv.org/api/query?max_results=8&search_query=' + encodeURIComponent(q)))) {
+            const doiMatch = rec.doi && c.doi && c.doi.toLowerCase() === rec.doi.toLowerCase();
+            const au = norm((c.authors || []).map(a => a.family).join(' '));
+            if (doiMatch || (sameTitle(c.title, rec.title) && (!fam || au.split(' ').includes(fam)))) { id = c.arxiv; break; }
+          }
+        }
+      } catch (e) {}
+    }
+    rec.arxivChecked = Date.now();
+    if (id) { rec.arxiv = id; rec.arxivFound = true; }
+    if (rec.entry) cachePut(hash(rec.entry), rec);
+    return id;
+  }
+  async function sources(rec) {
+    const out = [];
+    const ax = await arxivOf(rec);
+    if (rec.pdf && !/arxiv\.org/i.test(rec.pdf)) out.push({ url: rec.pdf, kind: 'journal' });
+    if (ax) out.push({ url: 'https://arxiv.org/pdf/' + ax, kind: 'arxiv', id: ax });
+    if (!out.length && rec.pdf) out.push({ url: rec.pdf, kind: /arxiv\.org/i.test(rec.pdf) ? 'arxiv' : 'journal' });
+    return out;
+  }
+
   async function bibtex(rec) {
     if (rec.doi) {
       try { const r = await fetch('https://api.crossref.org/works/' + encodeURIComponent(rec.doi) + '/transform/application/x-bibtex'); if (r.ok) return (await r.text()).trim(); } catch (e) {}
@@ -156,5 +218,5 @@ const Ref = (() => {
 
   const authorsShort = a => !a || !a.length ? '' : a.length <= 3 ? a.map(x => x.family).join(', ') : a[0].family + ' et al.';
   const cached = entry => cacheGet(hash(entry));
-  return { resolve, cached, ids, score, bibtex, authorsShort, norm, words, hash, _fromCrossref: fromCrossref, _fromArxiv: fromArxiv };
+  return { resolve, cached, ids, score, bibtex, arxivOf, sources, sameTitle, authorsShort, norm, words, hash, _fromCrossref: fromCrossref, _fromArxiv: fromArxiv };
 })();

@@ -7,6 +7,12 @@ Click a citation and see the reference instantly, and even the exact lemma it po
 
 ---
 
+## What's new in 1.8
+
+- **Overleaf.** A **VanoLib** button appears next to "Download PDF" in Overleaf. It opens the compiled PDF in VanoLib Reader, and that tab reloads at the same place after each compile.
+- **Cards inside Overleaf's preview.** Click a citation such as `[May25, Lemma 2.1]` and the reference card opens right there, with the exact statement. Click a link to a theorem, lemma, proposition or equation of your own paper and you see its statement without leaving the place you are reading, with **Go there** to jump. Sections and pages still jump as usual, and Alt-click keeps Overleaf's own behaviour. The project needs `hyperref`.
+- **The arXiv version when the journal is not free.** When a cited paper is behind a paywall, its statement is read from its arXiv version, found through OpenAlex, Semantic Scholar or the arXiv search and checked against the title and the first author. When the journal PDF is free, it is read first, since it is the version you cite. The card says which version it used.
+
 ## What's new in 1.7
 
 - **The exact statement behind a citation.** Click `[May25, Lemma 2.1]` and the card shows Lemma 2.1 itself, cut from the cited paper's own PDF (arXiv or open access), with its page number. Formulas look exactly as in the paper. It works for theorems, lemmas, propositions, corollaries, definitions, remarks and examples, abbreviations such as `Thm. 3.4`, lettered results such as `Theorem A`, equations `(2.4)` and sections `§3.1`, and also when the citation wraps to the next line. Click the statement, or **Open at page …**, to read the cited paper at that very place.
@@ -16,7 +22,7 @@ Click a citation and see the reference instantly, and even the exact lemma it po
 
 Also since 1.0: **verified references** (each entry is checked against Crossref and arXiv, marked ✓ Verified or ≈ Probable match), a **Research panel** (the paper, papers citing it, related papers, verified references, one-click .bib export), **previews** of theorem and equation links on hover, and **full-text search** across the PDFs of your reading list.
 
-Version 1.0.0 is still available on the [releases page](https://github.com/yassine-aitmohamed/vanolib-extension/releases).
+Earlier versions are still available on the [releases page](https://github.com/yassine-aitmohamed/vanolib-extension/releases).
 
 ## Why VanoLib Reader
 
@@ -29,7 +35,7 @@ Reading a paper in the browser's built-in PDF viewer means scrolling back and fo
 - **Reading list, offline.** Save a PDF with ⌘D / Ctrl+D: it stays readable offline, and reopens at the page where you stopped, with your highlights. Search the full text of all your saved PDFs.
 - **Comfortable reading.** Sharp text at every zoom, day, sepia and night modes, search, outline and page thumbnails.
 - **One-click download** to a dedicated folder, and **send to VanoAtlas** if you use [VanoAtlas](https://github.com/yassine-aitmohamed/vanoatlas).
-- **Private.** Your PDFs, notes and reading list stay in your browser. No account, no tracking, no server of ours. To check references and show statements, the reader asks public scholarly services (Crossref, arXiv, Semantic Scholar) about the papers you cite.
+- **Private.** Your PDFs, notes and reading list stay in your browser. No account, no tracking, no server of ours. To check references and show statements, the reader asks public scholarly services (Crossref, arXiv, OpenAlex, Semantic Scholar) about the papers you cite. In Overleaf, the compiled PDF goes from Overleaf to the extension in your own browser and nowhere else.
 - **Free and open source** (MIT).
 
 ## Screenshots

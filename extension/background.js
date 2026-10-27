@@ -49,3 +49,38 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 chrome.contextMenus.onClicked.addListener(info => {
   if (info.menuItemId === 'vl-list') chrome.tabs.create({ url: chrome.runtime.getURL('library.html') });
 });
+
+function idb() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('vanolib-reader', 2);
+    r.onupgradeneeded = () => { const d = r.result; if (!d.objectStoreNames.contains('pdfs')) d.createObjectStore('pdfs'); if (!d.objectStoreNames.contains('texts')) d.createObjectStore('texts'); };
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+}
+async function putPdf(k, buf) {
+  const d = await idb();
+  await new Promise((res, rej) => { const t = d.transaction('pdfs', 'readwrite'); t.objectStore('pdfs').put(buf, k); t.oncomplete = res; t.onerror = () => rej(t.error); });
+  d.close();
+}
+chrome.runtime.onMessage.addListener((m, sender, reply) => {
+  if (!m || !m.type) return;
+  if (m.type === 'ovl-pdf') {
+    const bin = atob(m.data), u = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    putPdf('ovl:' + m.project, u.buffer).then(() => {
+      chrome.runtime.sendMessage({ type: 'ovl-updated', project: m.project }).catch(() => {});
+      reply({ ok: true });
+    }).catch(e => reply({ ok: false, error: String(e && e.message || e) }));
+    return true;
+  }
+  if (m.type === 'ovl-open') {
+    const url = VIEWER + '?ovl=' + encodeURIComponent(m.project) + '&title=' + encodeURIComponent(m.title || '');
+    chrome.tabs.query({}, tabs => {
+      const t = tabs.find(t => t.url && t.url.startsWith(VIEWER + '?ovl=' + encodeURIComponent(m.project)));
+      if (t) { chrome.tabs.update(t.id, { active: true }); chrome.windows.update(t.windowId, { focused: true }); }
+      else chrome.tabs.create({ url, index: sender.tab ? sender.tab.index + 1 : undefined });
+      reply({ ok: true });
+    });
+    return true;
+  }
+});

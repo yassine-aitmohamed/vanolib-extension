@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "VanoLib Reader",
-  "version": "1.7.0",
-  "description": "Read PDFs in the VanoLib reader: sharp text, day / sepia / night, search, outline, highlights, citation cards, a reading list kept offline, one-click download, verified references (Crossref / arXiv), the exact statement behind a citation like [May25, Lemma 2.1], a research panel (cited by, related papers, .bib export), full-text search of your library, and sending to your VanoAtlas library.",
+  "version": "1.8.0",
+  "description": "Read PDFs in the VanoLib reader: sharp text, day / sepia / night, search, outline, highlights, citation cards, a reading list kept offline, one-click download, verified references (Crossref / arXiv), the exact statement behind a citation like [May25, Lemma 2.1], a research panel (cited by, related papers, .bib export), full-text search of your library, Overleaf integration (open the compiled PDF in VanoLib, citation cards in the preview), and sending to your VanoAtlas library.",
   "permissions": [
     "storage",
     "tabs",
@@ -35,5 +35,26 @@
   },
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.overleaf.com/project/*"
+      ],
+      "js": [
+        "overleaf.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "card.html"
+      ],
+      "matches": [
+        "https://www.overleaf.com/*"
+      ]
+    }
+  ]
 }

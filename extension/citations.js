@@ -74,6 +74,7 @@ function makeCite(reader) {
       const L = await lines(idx + 1);
       let k = top == null ? 0 : L.findIndex(l => l.y <= top + 3);
       if (k < 0) k = 0;
+      for (let j = k; j < Math.min(L.length, k + 3); j++) if (LABEL.test(L[j].text) || NUM.test(L[j].text)) { k = j; break; }
       const out = [L[k] && L[k].text];
       for (let j = k + 1; j < L.length && out.length < 7; j++) {
         if (LABEL.test(L[j].text) || NUM.test(L[j].text)) break;
@@ -161,27 +162,41 @@ function makeCite(reader) {
   async function fillStmt(b, loc, rec, width, gen) {
     const say = (msg, cls) => { const i = b.querySelector('.vc-sh i'); i.textContent = msg; i.className = cls || ''; };
     const name = Loc.label(loc);
-    const pdf = rec && rec.status !== 'none' && rec.pdf || (rec && rec.arxiv ? 'https://arxiv.org/pdf/' + rec.arxiv : '');
-    if (!pdf) { say('No open-access PDF of this paper was found (arXiv, open access). Open the paper to read ' + name + '.', 'vc-no'); return; }
-    let res;
-    try { res = await Loc.statement(pdf, loc); } catch (e) { if (gen === showGen) say('Could not open the PDF of the cited paper (' + (e.message || e) + ').', 'vc-no'); return; }
+    say('Looking for an open version (journal, arXiv)…');
+    let srcs = [];
+    if (rec && rec.status !== 'none') { try { srcs = await Ref.sources(rec); } catch (e) {} }
+    else if (rec && rec.arxiv) srcs = [{ url: 'https://arxiv.org/pdf/' + rec.arxiv, kind: 'arxiv', id: rec.arxiv }];
     if (gen !== showGen) return;
+    if (!srcs.length) { say('No free version of this paper was found (journal open access, arXiv). Open the paper to read ' + name + '.', 'vc-no'); return; }
+    let res = null, src = null, err = null;
+    for (const s of srcs) {
+      say(s.kind === 'arxiv' ? 'Reading the arXiv version…' : 'Reading the journal version…');
+      try {
+        const r = await Loc.statement(s.url, loc);
+        if (!res || (r.found && !res.found)) { res = r; src = s; }
+        if (r.found) break;
+      } catch (e) { err = e; }
+      if (gen !== showGen) return;
+    }
+    if (gen !== showGen) return;
+    if (!res) { say('Could not open the PDF of the cited paper (' + ((err && err.message) || err) + ').', 'vc-no'); return; }
+    const pdf = src.url;
     const open = (page, top) => {
       const u = typeof VL !== 'undefined' ? VL.viewer(pdf) + '&page=' + page + (top ? '&top=' + Math.round(top) : '') : pdf + '#page=' + page;
       window.open(u, '_blank');
     };
     const sa = b.querySelector('.vc-sa');
     if (!res.found) {
-      say(name + ' was not found in the ' + (/arxiv\.org/.test(pdf) ? 'arXiv version' : 'PDF') + ' of this paper (' + res.pages + ' pages). The numbering may differ from the cited version.', 'vc-no');
+      say(name + ' was not found in the ' + (srcs.length > 1 ? 'journal or arXiv versions' : src.kind === 'arxiv' ? 'arXiv version' : 'PDF') + ' of this paper. The numbering may differ from the cited version.', 'vc-no');
       sa.innerHTML = `<a href="#" data-o="1">Open the paper in VanoLib ↗</a>`;
       sa.querySelector('[data-o]').onclick = e => { e.preventDefault(); open(1); };
       return;
     }
-    const arxivPdf = /arxiv\.org/.test(pdf), published = rec && rec.venue && !/arxiv/i.test(rec.venue);
+    const arxivPdf = src.kind === 'arxiv', published = rec && rec.venue && !/arxiv/i.test(rec.venue);
     say('page ' + res.page + (res.segs.length > 1 ? '–' + res.segs[res.segs.length - 1].page : '') + (arxivPdf ? ' · arXiv version' : ''), 'vc-ok');
     const notes = [];
     if (res.mismatch) notes.push(`The paper calls it <b>${ESCH(res.as)}</b>, not ${ESCH(name)}.`);
-    if (arxivPdf && published) notes.push('Read from the arXiv version: the published version may number it differently.');
+    if (arxivPdf && published) notes.push(`Read from the arXiv version${src.id ? ' (arXiv:' + ESCH(src.id) + ')' : ''}${srcs.some(x => x.kind === 'journal') ? ', since the journal PDF could not be read' : ', since the journal version is not free'}: the published version may number it differently.`);
     const img = b.querySelector('.vc-img');
     try {
       const cvs = await Loc.render(res, width);
@@ -350,6 +365,7 @@ function makeCite(reader) {
   (function init() {
       R = reader; refs = null; building = null; refStart = 0;
       reader.bibliography = build;
+      reader.refAtDest = fromDest;
       reader.showRefCard = (x, y, items, pin) => { curDest = null; show(x, y, items, pin); };
       reader.view.addEventListener('mouseover', onOver);
       reader.view.addEventListener('mouseout', onOut);

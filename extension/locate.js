@@ -44,7 +44,9 @@ const Loc = (() => {
 
   const docs = new Map();
   function isPdf(buf) { const u = new Uint8Array(buf.slice(0, 1024)); for (let i = 0; i < u.length - 3; i++) if (u[i] === 37 && u[i + 1] === 80 && u[i + 2] === 68 && u[i + 3] === 70) return true; return false; }
-  async function bytesOf(url) {
+  const timeout = (p, ms, what) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(what + ' did not answer')), ms))]);
+  async function bytesOf(url) { return timeout(bytesOf0(url), 25000, new URL(url).hostname); }
+  async function bytesOf0(url) {
     if (typeof fetchPdf === 'function') { const b = await fetchPdf(url); if (b) return b; throw new Error('not a PDF'); }
     const r = await fetch(url, { redirect: 'follow' });
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -274,6 +276,41 @@ const Loc = (() => {
     return results.get(key);
   }
 
+  const local = new WeakMap();
+  async function at(pdf, pageNo, top, kind) {
+    let D = local.get(pdf);
+    if (!D) { D = { pdf, url: '', pages: {} }; local.set(pdf, D); }
+    const P = await page(D, pageNo, true);
+    if (top == null) top = P.vp.height;
+    const k = P.rows.findIndex(r => r.y <= top + 2);
+    if (k < 0) return { found: false };
+    const done = (w, as) => {
+      const segs = w.segs.filter(s => s.rows.length).map(s => ({ page: s.P.i, left: s.P.left, right: s.P.right, P: s.P, top: clampTop(s), bottom: clampBottom(s) }));
+      return segs.length ? { found: true, page: segs[0].page, top: segs[0].top, as, segs, text: w.text.join('\n') } : { found: false };
+    };
+    const h = P.body;
+    if (kind === 'equation') {
+      const tagged = r => r.items.some(it => /^\(\s*[\w.\-′']+\s*\)$/.test(it.s.trim()) && (it.x <= P.left + 4 || it.x + it.w >= P.right - 4));
+      let end = -1;
+      for (let j = k; j < Math.min(P.rows.length, k + 10); j++) if (tagged(P.rows[j])) { end = j; break; }
+      if (end < 0) end = Math.min(P.rows.length - 1, k + 2);
+      const rows = P.rows.slice(k, end + 1);
+      for (let j = end + 1; j < P.rows.length && P.rows[j].h < h * 0.9 && P.rows[j].y > P.rows[end].y - h; j++) rows.push(P.rows[j]);
+      while (rows.length > 1 && rows[0].h < h * 0.9) rows.shift();
+      const tag = (P.rows[end].items.find(it => /^\(.*\)$/.test(it.s.trim())) || {}).s;
+      return done({ segs: [{ P, rows }], text: rows.map(r => r.text) }, tag ? tag.trim() : 'Equation');
+    }
+    for (let j = k; j < Math.min(P.rows.length, k + 4); j++) {
+      if (!anyHead.test(P.rows[j].text)) continue;
+      const w = await walk(D, { P, k: j }, 'statement', '');
+      const m = P.rows[j].text.match(/^(\S+(?:\s?\S)*?)\s*([A-Z]?\d+(?:\.\d+)*[a-z]?|[A-Z](?:\.\d+)*)?\s*[.:(]/);
+      return done(w, m ? (m[1] + (m[2] ? ' ' + m[2] : '')).replace(/\s+/g, ' ') : 'Statement');
+    }
+    const rows = [];
+    for (let j = k; j < P.rows.length && rows.length < 12 && P.rows[j].y >= top - 230; j++) rows.push(P.rows[j]);
+    return done({ segs: [{ P, rows }], text: rows.map(r => r.text) }, 'Target');
+  }
+
   async function render(res, width) {
     const dpr = Math.min(devicePixelRatio || 1, 2.5), out = [];
     for (const s of res.segs) {
@@ -294,5 +331,5 @@ const Loc = (() => {
     return out;
   }
 
-  return { parse, after, label, statement, render, open, _page: page };
+  return { parse, after, label, statement, at, render, open, _page: page };
 })();
