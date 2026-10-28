@@ -13,7 +13,7 @@ const Research = (() => {
     ['nLab', q => 'https://ncatlab.org/nlab/search?query=' + q]
   ];
   const state = new WeakMap();
-  const st = R => { if (!state.has(R) || state.get(R).key !== R.key) state.set(R, { key: R.key, paper: undefined, recs: {}, open: {} }); return state.get(R); };
+  const st = R => { if (!state.has(R) || state.get(R).pdf !== R.pdf || state.get(R).generation !== R.gen) state.set(R, { key: R.key, pdf: R.pdf, generation: R.gen, paper: undefined, recs: {}, open: {} }); return state.get(R); };
 
   async function ids(R) {
     const u = decodeURIComponent((typeof FILE !== 'undefined' && FILE) || R.key || '');
@@ -103,9 +103,9 @@ const Research = (() => {
     const box = R.pane.querySelector('.rr-list'); if (!box || gen !== R.gen) return;
     R.pane.querySelector('.rr-refs .n').textContent = list.length ? '· ' + list.length : '';
     if (!list.length) { box.innerHTML = '<div class="rmsg">No bibliography found at the end of this PDF.</div>'; return; }
-    for (const it of list) if (!s.recs[it.label]) { try { const c = await Ref.cached(it.text); if (c) s.recs[it.label] = c; } catch (e) {} }
+    for (const it of list) if (s.recs[it.label]?.entry !== it.text) delete s.recs[it.label];
     box.innerHTML = list.map(it => { const r = s.recs[it.label];
-      return `<div class="rr-r" data-l="${E(it.label)}">${badge(r)}<b>[${E(it.label)}]</b> <span>${E(r && r.status !== 'none' ? Ref.authorsShort(r.authors) + ' — ' + r.title + (r.year ? ' (' + r.year + ')' : '') : it.text.slice(0, 140))}</span></div>`; }).join('');
+      return `<div class="rr-r" data-l="${E(it.label)}">${badge(r)}<b>[${E(it.label)}]</b> <span>${E(it.text.slice(0, 180))}</span></div>`; }).join('');
     box.querySelectorAll('.rr-r').forEach(row => row.onclick = e => {
       const it = list.find(x => x.label === row.dataset.l); if (!it || !R.showRefCard) return;
       const b = row.getBoundingClientRect(); R.showRefCard(b.right + 8 + 240, b.top - 6, [it], true);
@@ -116,14 +116,14 @@ const Research = (() => {
     let n = 0, ok = 0, mb = 0;
     for (const it of list) {
       if (gen !== R.gen) return;
-      if (!s.recs[it.label] || s.recs[it.label].status === 'none') {
+      if (true) {
         try { s.recs[it.label] = await Ref.resolve(it.text); } catch (e) {}
         await new Promise(r => setTimeout(r, 150));
       }
       n++; const r = s.recs[it.label]; if (r && r.status === 'verified') ok++; else if (r && r.status === 'likely') mb++;
       if (prog) prog.textContent = `${n} / ${list.length} · ${ok} verified · ${mb} probable · ${n - ok - mb} not found`;
       const row = R.pane.querySelector(`.rr-r[data-l="${CSS.escape(it.label)}"]`);
-      if (row && r) row.innerHTML = `${badge(r)}<b>[${E(it.label)}]</b> <span>${E(r.status !== 'none' ? Ref.authorsShort(r.authors) + ' — ' + r.title + (r.year ? ' (' + r.year + ')' : '') : it.text.slice(0, 140))}</span>`;
+      if (row && r) row.innerHTML = `${badge(r)}<b>[${E(it.label)}]</b> <span>${E(it.text.slice(0, 180))}</span>`;
     }
   }
   async function exportBib(R, btn) {
@@ -131,8 +131,8 @@ const Research = (() => {
     const old = btn.textContent; let out = [], k = 0;
     for (const it of list) {
       btn.textContent = `⤓ ${++k} / ${list.length}`;
-      let r = s.recs[it.label]; if (!r) { try { r = s.recs[it.label] = await Ref.resolve(it.text); } catch (e) {} }
-      if (r && r.status !== 'none') { try { out.push(`% [${it.label}]${r.status === 'likely' ? ' (probable match — check)' : ''}\n` + await Ref.bibtex(r)); continue; } catch (e) {} }
+      let r; try { r = await Ref.resolve(it.text); } catch (e) {}
+      if (r && r.status === 'verified') { try { out.push(`% [${it.label}]${r.status === 'likely' ? ' (probable match — check)' : ''}\n` + await Ref.bibtex(r)); continue; } catch (e) {} }
       out.push(`% [${it.label}] not found — raw entry\n@misc{ref${it.label.replace(/\W/g, '')},\n  note = {${it.text.replace(/[{}]/g, '')}}\n}`);
     }
     btn.textContent = old;

@@ -34,7 +34,17 @@ chrome.tabs.onUpdated.addListener(async (tabId, info) => {
   if (await auto()) chrome.tabs.update(tabId, { url: viewerFor(url) });
 });
 
-chrome.runtime.onInstalled.addListener(() => chrome.storage.local.set({ nativeHosts: [] }));
+async function removeOldReferenceCache() {
+  const data = await chrome.storage.local.get(null);
+  const keys = Object.keys(data).filter(key => /^ref[23]?:/.test(key));
+  if (keys.length) await chrome.storage.local.remove(keys);
+}
+removeOldReferenceCache().catch(() => {});
+chrome.runtime.onInstalled.addListener(async () => {
+  const { nativeHosts } = await chrome.storage.local.get('nativeHosts');
+  if (!nativeHosts) await chrome.storage.local.set({ nativeHosts: [] });
+  await removeOldReferenceCache();
+});
 chrome.runtime.onInstalled.addListener(() => chrome.contextMenus.removeAll(() => {
   chrome.contextMenus.create({ id: 'vl-list', title: 'Reading list', contexts: ['action'] });
   chrome.contextMenus.create({ id: 'vl-link', title: 'Open in VanoLib Reader', contexts: ['link'] });
@@ -62,14 +72,17 @@ async function putPdf(k, buf) {
   await new Promise((res, rej) => { const t = d.transaction('pdfs', 'readwrite'); t.objectStore('pdfs').put(buf, k); t.oncomplete = res; t.onerror = () => rej(t.error); });
   d.close();
 }
+const pdfRevisions = new Map();
 chrome.runtime.onMessage.addListener((m, sender, reply) => {
   if (!m || !m.type) return;
   if (m.type === 'ovl-pdf') {
+    if (m.revision && pdfRevisions.get(m.project) === m.revision) { reply({ ok: true, revision: m.revision }); return; }
     const bin = atob(m.data), u = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
     putPdf('ovl:' + m.project, u.buffer).then(() => {
+      if (m.revision) pdfRevisions.set(m.project, m.revision); else pdfRevisions.delete(m.project);
       chrome.runtime.sendMessage({ type: 'ovl-updated', project: m.project }).catch(() => {});
-      reply({ ok: true });
+      reply({ ok: true, revision: m.revision || '' });
     }).catch(e => reply({ ok: false, error: String(e && e.message || e) }));
     return true;
   }

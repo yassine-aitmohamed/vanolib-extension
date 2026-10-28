@@ -1,222 +1,90 @@
 const Ref = (() => {
-  const mem = new Map();
-  const hasStore = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local;
-  const TTL = 1000 * 60 * 60 * 24 * 60;
-
-  const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
-  const STOP = new Set('the of and in on for a an to with by from at its is are as via de la le les des du et sur une un'.split(' '));
-  const words = s => norm(s).split(' ').filter(w => w.length > 2 && !STOP.has(w));
-  function hash(s) { let h = 2166136261; for (const c of norm(s)) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); }
-
+  const norm = s => String(s || '').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').replace(/\s+/g,' ').trim();
+  const STOP=new Set('the of and in on for a an to with by from at its is are as via de la le les des du et sur une un'.split(' '));
+  const words=s=>norm(s).split(' ').filter(w=>w.length>2&&!STOP.has(w));
+  const hash=s=>String(s || '');
+  const dehyph=s=>String(s || '').replace(/(\p{L})-\s+(\p{L})/gu,'$1$2').replace(/[ﬁﬂ]/g,c=>c==='ﬁ'?'fi':'fl');
+  function cleanDoi(value){let d=String(value || '').replace(/^https?:\/\/(?:dx\.)?doi\.org\//i,'').trim().replace(/[.,;:]+$/,'');while(d.endsWith(')')&&(d.match(/\)/g)||[]).length>(d.match(/\(/g)||[]).length)d=d.slice(0,-1);return d;}
   function ids(text) {
-    const t = String(text || '').replace(/\s+/g, ' ');
-    const doi = ((t.match(/\b(10\.\d{4,9}\/[^\s,;"<>]+)/) || [])[1] || '').replace(/[.)\]]+$/, '');
-    const arxiv = ((t.match(/arXiv[:\s]*(?:preprint\s*)?(?:arXiv:)?\s*([0-9]{4}\.[0-9]{4,5}|[a-z\-]+(?:\.[A-Z]{2})?\/[0-9]{7})/i) ||
-                   t.match(/arxiv\.org\/(?:abs|pdf)\/([0-9]{4}\.[0-9]{4,5}|[a-z\-]+\/[0-9]{7})/i) || [])[1] || '').replace(/v\d+$/, '');
-    const years = (t.match(/\b(1[89]\d\d|20\d\d)\b/g) || []).map(Number);
-    return { doi, arxiv, years };
+    let t=String(text || '');try{t=decodeURIComponent(t);}catch{}
+    t=t.replace(/\s+/g,' ');
+    let doi=cleanDoi((t.match(/\b10\.\d{4,9}\/[^\s,;"<>?#&]+/i)||[])[0]);
+    if (/^https?:/i.test(t)) doi=doi.replace(/\.pdf$/i,'');
+    const arxiv=((t.match(/(?:arxiv\s*:\s*(?:preprint\s*)?(?:arxiv:)?\s*|(?<![\w.-])(?:export\.)?arxiv\.org\/(?:abs|pdf)\/|10\.48550\/arxiv\.)(\d{4}\.\d{4,5}|[a-z-]+(?:\.[a-z]{2})?\/\d{7})(?:v\d+)?/i)||[])[1]||'');
+    return {doi,arxiv,years:(t.match(/\b(?:18|19|20)\d\d\b/g)||[]).map(Number)};
   }
-
-  function score(entry, c) {
-    const E = ' ' + norm(entry) + ' ';
-    const tw = words(c.title);
-    if (!tw.length) return { s: 0 };
-    const found = tw.filter(w => E.includes(' ' + w + ' ') || E.includes(' ' + w)).length;
-    const titleScore = found / tw.length;
-    const fam = c.authors && c.authors[0] && norm(c.authors[0].family || '').split(' ').pop();
-    const author = !!fam && fam.length > 1 && E.includes(' ' + fam);
-    const { years } = ids(entry);
-    const year = !!c.year && years.some(y => Math.abs(y - c.year) <= 1);
-    return { s: titleScore * 0.6 + (author ? 0.25 : 0) + (year ? 0.15 : 0), titleScore, author, year };
+  function tokens(text){const out=[];const raw=dehyph(text).normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase();const re=/([\p{L}\p{N}]+)|([^\p{L}\p{N}\s]+)/gu;let match,before='';while((match=re.exec(raw))){if(match[2]){before+=match[2];continue;}out.push({w:match[1],before,punct:!!before});before='';}return out;}
+  function titleIn(entry,title) {
+    const E=tokens(entry),T=tokens(title).map(t=>t.w);if(!T.length)return {ratio:0,start:false,end:false};
+    for(let i=0;i+T.length<=E.length;i++){
+      if(!T.every((w,j)=>E[i+j].w===w))continue;
+      const next=E[i+T.length],start=i===0||E[i].punct;
+      const continuation=next && (/^(?:i|ii|iii|iv|v|vi|vii|viii|ix|x)$/i.test(next.w)||/[:–—]/.test(next.before));
+      const end=!next||!continuation&&(next.punct||/^\d{4}$/.test(next.w));
+      if(start&&end)return {ratio:1,start:true,end:true};
+    }
+    return {ratio:0,start:false,end:false};
   }
-
-  async function J(url) {
-    const r = await fetch(url, { headers: { Accept: 'application/json' } });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    return r.json();
+  function authorsIn(entry,c){const text=' '+norm(entry)+' ';const families=(c.authors||[]).map(a=>norm(a.family||a.name||'')).filter(Boolean);const hit=families.filter(f=>text.includes(' '+f+' ')).length;return {first:!!families[0]&&text.includes(' '+families[0]+' '),share:families.length?hit/families.length:0,etal:/\bet\s+al\b/i.test(entry)};}
+  function score(entry,c,src){const title=titleIn(entry,c.title),author=authorsIn(entry,c),years=ids(entry).years;const yearOk=!years.length||!!c.year&&years.some(y=>Math.abs(y-c.year)<=1);const authorOk=author.first&&(author.share===1||author.etal);const strong=title.ratio===1&&authorOk&&yearOk;return {s:strong?1:0,titleScore:title.ratio,start:title.start,end:title.end,author:authorOk,year:yearOk&&years.length>0,strong};}
+  const linkedTitle = (a,b,linked=false) => sameTitle(a,b) || !!linked && ((/ i$/.test(norm(a)) && !/ (?:i|ii|iii|iv|v)$/.test(norm(b)) && norm(a).replace(/ i$/,'')===norm(b)) || (/ i$/.test(norm(b)) && !/ (?:i|ii|iii|iv|v)$/.test(norm(a)) && norm(b).replace(/ i$/,'')===norm(a)));
+  const sameTitle=(a,b)=>!!norm(a)&&norm(dehyph(a))===norm(dehyph(b));
+  function sameWork(a,b){if(a.doi&&b.doi)return cleanDoi(a.doi).toLowerCase()===cleanDoi(b.doi).toLowerCase();if(a.arxiv&&b.arxiv)return a.arxiv.replace(/v\d+$/,'')===b.arxiv.replace(/v\d+$/,'');return sameTitle(a.title,b.title)&&norm(a.authors?.[0]?.family)===norm(b.authors?.[0]?.family)&&a.year===b.year;}
+  async function request(url,json=false){const c=new AbortController(),timer=setTimeout(()=>c.abort(),14000);try{const r=await fetch(url,{signal:c.signal,cache:'no-store',credentials:'omit',headers:json?{Accept:'application/json'}:{}});if(!r.ok)throw new Error('HTTP '+r.status);return json?await r.json():await r.text();}finally{clearTimeout(timer);}}
+  const J=url=>request(url,true),X=url=>request(url);
+  const fromCrossref=it=>({title:(it?.title?.[0]||'').replace(/<[^>]+>/g,'').trim(),authors:(it?.author||[]).map(a=>({given:a.given||'',family:a.family||a.name||''})),venue:it?.['container-title']?.[0]||'',year:(it?.issued||it?.['published-print']||it?.['published-online'])?.['date-parts']?.[0]?.[0]||0,volume:it?.volume||'',issue:it?.issue||'',pages:it?.page||'',doi:it?.DOI||'',url:it?.URL||(it?.DOI?'https://doi.org/'+it.DOI:'')});
+  function fromArxiv(xml){const d=new DOMParser().parseFromString(xml,'text/xml');if(d.querySelector('parsererror'))throw new Error('Invalid arXiv response');return [...d.getElementsByTagNameNS('http://www.w3.org/2005/Atom','entry')].map(en=>{const g=tag=>(en.getElementsByTagNameNS('http://www.w3.org/2005/Atom',tag)[0]?.textContent||'').trim();const id=ids(g('id')).arxiv;return {title:g('title').replace(/\s+/g,' '),authors:[...en.getElementsByTagNameNS('http://www.w3.org/2005/Atom','name')].map(n=>{const p=n.textContent.trim().split(' ');return {family:p.pop(),given:p.join(' ')};}),venue:'arXiv preprint',year:+g('published').slice(0,4)||0,arxiv:id,doi:cleanDoi(en.getElementsByTagNameNS('http://arxiv.org/schemas/atom','doi')[0]?.textContent),url:id?'https://arxiv.org/abs/'+id:'',pdf:id?'https://arxiv.org/pdf/'+id:''};}).filter(c=>c.arxiv&&c.title);}
+  let queue=Promise.resolve(),lastArxiv=0;
+  function queryArxiv(params){const run=queue.catch(()=>{}).then(async()=>{await new Promise(r=>setTimeout(r,Math.max(0,3100-(Date.now()-lastArxiv))));lastArxiv=Date.now();return fromArxiv(await X('https://export.arxiv.org/api/query?'+new URLSearchParams({...params,max_results:'5'})));});queue=run;return run;}
+  async function byDoi(doi){const j=await J('https://api.crossref.org/works/'+encodeURIComponent(doi));const c=fromCrossref(j.message);if(cleanDoi(c.doi).toLowerCase()!==cleanDoi(doi).toLowerCase())throw new Error('DOI response mismatch');return c;}
+  async function byArxiv(id){const list=await queryArxiv({id_list:id});const c=list.find(c=>c.arxiv.toLowerCase()===id.replace(/v\d+$/,'').toLowerCase());if(!c)throw new Error('arXiv response mismatch');return c;}
+  async function searchCrossref(entry){const j=await J('https://api.crossref.org/works?rows=8&select=DOI,title,author,issued,container-title,volume,issue,page,URL,publisher&query.bibliographic='+encodeURIComponent(entry.slice(0,600)));return (j.message?.items||[]).map(fromCrossref);}
+  async function searchArxiv(entry, crossref = []) {
+    const seed = crossref.find(c => authorsIn(entry, c).first);
+    const quoted = entry.match(/[“"]([^”"]{12,400})[”"]/);
+    const sentence = entry.split(/\.\s+/).filter(s => words(s).length >= 3).sort((a,b) => words(b).length-words(a).length)[0];
+    const title = seed?.title || quoted?.[1] || sentence || entry;
+    const w = [...new Set(words(title).filter(w => !/^\d+$/.test(w)))].sort((a,b) => b.length-a.length).slice(0,7);
+    if (w.length < 2) return [];
+    const family = seed?.authors?.[0]?.family;
+    return queryArxiv({search_query:w.map(w=>'ti:'+w).join(' AND ')+(family?' AND au:'+norm(family):'')});
   }
-  async function X(url) { const r = await fetch(url); if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); }
-
-  const fromCrossref = it => ({
-    title: (it.title && it.title[0] || '').replace(/<[^>]+>/g, '').trim(),
-    authors: (it.author || []).map(a => ({ given: a.given || '', family: a.family || a.name || '' })),
-    venue: (it['container-title'] && it['container-title'][0]) || (it.publisher === 'arXiv' ? 'arXiv' : '') || '',
-    year: ((it.issued || it['published-print'] || it['published-online'] || {})['date-parts'] || [[0]])[0][0] || 0,
-    volume: it.volume || '', pages: it.page || '',
-    doi: it.DOI || '', url: it.URL || (it.DOI ? 'https://doi.org/' + it.DOI : '')
-  });
-  function fromArxiv(xml) {
-    const d = new DOMParser().parseFromString(xml, 'text/xml');
-    return [...d.querySelectorAll('entry')].map(en => {
-      const g = k => ((en.querySelector(k) || {}).textContent || '').trim();
-      const id = (g('id').match(/abs\/(.+?)(v\d+)?$/) || [])[1] || '';
-      const doiEl = [...en.children].find(n => n.localName === 'doi');
-      const jrEl = [...en.children].find(n => n.localName === 'journal_ref');
-      return {
-        title: g('title').replace(/\s+/g, ' '),
-        authors: [...en.querySelectorAll('author > name')].map(n => { const p = n.textContent.trim().split(' '); return { family: p.pop(), given: p.join(' ') }; }),
-        venue: jrEl ? jrEl.textContent.trim() : 'arXiv preprint', year: +g('published').slice(0, 4) || 0,
-        arxiv: id, doi: doiEl ? doiEl.textContent.trim() : '', url: id ? 'https://arxiv.org/abs/' + id : '', pdf: id ? 'https://arxiv.org/pdf/' + id : ''
-      };
-    }).filter(x => x.title && x.title !== 'Error');
+  async function enrich(rec){const key=rec.doi?'DOI:'+rec.doi:rec.arxiv?'arXiv:'+rec.arxiv:'';if(!key)return rec;try{const j=await J('https://api.semanticscholar.org/graph/v1/paper/'+encodeURIComponent(key)+'?fields=title,externalIds,openAccessPdf,citationCount,url');const ex=j.externalIds||{};if(!sameTitle(j.title,rec.title))return rec;if(rec.doi&&ex.DOI&&cleanDoi(ex.DOI).toLowerCase()!==cleanDoi(rec.doi).toLowerCase())return rec;if(rec.arxiv&&ex.ArXiv&&rec.arxiv!==ex.ArXiv)return rec;if(!(rec.doi&&ex.DOI || rec.arxiv&&ex.ArXiv))return rec;rec.citations=j.citationCount;rec.s2=j.url||'';rec.s2id=j.paperId||'';if(!rec.pdf && j.openAccessPdf?.url && /^https?:/.test(j.openAccessPdf.url))rec.pdf=j.openAccessPdf.url;}catch{}return rec;}
+  const pending=new Map();
+  async function resolve(entry,opts={}) {
+    entry=String(entry||'').replace(/\s+/g,' ').trim();
+    if(!entry)return {status:'none',entry,how:'No reference text'};
+    if(pending.has(entry))return pending.get(entry);
+    const job=(async()=>{
+      const id=ids(entry),none=how=>({status:'none',entry,how});let exact=null;
+      const identifierOnly=words(entry.replace(id.doi,'').replace(id.arxiv,'').replace(/https?:\/\/doi.org\//gi,'').replace(/arxiv\s*:/gi,'')).length<2;
+      try{if(id.doi&&!/^10\.48550\/arxiv\./i.test(id.doi))exact=await byDoi(id.doi);else if(id.arxiv)exact=await byArxiv(id.arxiv);}catch{}
+      if(exact){if(identifierOnly||score(entry,exact,'identifier').strong)return {...await enrich(exact),status:'verified',entry,how:'Exact identifier and reference text checked live'};return none('Identifier metadata conflicts with the printed reference; original text retained');}
+      const candidates=[];
+      try{candidates.push(...await searchCrossref(entry));}catch{}
+      let strong=candidates.filter(c=>score(entry,c,'Crossref').strong);
+      if(!strong.length){try{candidates.push(...await searchArxiv(entry,candidates));}catch{}strong=candidates.filter(c=>score(entry,c,'arXiv').strong || c.arxiv && c.doi && candidates.some(j=>!j.arxiv && j.doi && cleanDoi(j.doi).toLowerCase()===cleanDoi(c.doi).toLowerCase() && score(entry,{...c,year:j.year},'journal-year').strong));}
+      const unique=[];for(const c of strong)if(!unique.some(x=>sameWork(x,c)))unique.push(c);
+      if(unique.length!==1)return none(unique.length?'Several matching records; no article selected':'No exact title/author match; original text retained');
+      return {...await enrich(unique[0]),status:'verified',entry,how:'Full ordered title, authors and available year checked live'};
+    })().finally(()=>pending.delete(entry));pending.set(entry,job);return job;
   }
-
-  async function byDoi(doi) { const j = await J('https://api.crossref.org/works/' + encodeURIComponent(doi)); return fromCrossref(j.message); }
-  async function byArxiv(id) { return fromArxiv(await X('https://export.arxiv.org/api/query?id_list=' + encodeURIComponent(id)))[0]; }
-  async function searchCrossref(entry) {
-    const q = entry.replace(/\s+/g, ' ').replace(/^[^A-Za-zÀ-ÿ]*/, '').slice(0, 300);
-    const j = await J('https://api.crossref.org/works?rows=5&select=DOI,title,author,issued,container-title,volume,page,URL,publisher&query.bibliographic=' + encodeURIComponent(q));
-    return ((j.message && j.message.items) || []).map(fromCrossref);
-  }
-  async function searchArxiv(entry) {
-    const w = words(entry).filter(x => !/^\d+$/.test(x)).slice(0, 10);
-    if (w.length < 3) return [];
-    return fromArxiv(await X('https://export.arxiv.org/api/query?max_results=5&search_query=' + encodeURIComponent(w.map(x => 'all:' + x).join(' AND '))));
-  }
-  async function enrich(rec) {
-    const key = rec.doi ? 'DOI:' + rec.doi : rec.arxiv ? 'arXiv:' + rec.arxiv : '';
-    if (!key) return rec;
-    try {
-      const j = await J('https://api.semanticscholar.org/graph/v1/paper/' + encodeURIComponent(key) + '?fields=title,externalIds,openAccessPdf,citationCount,url');
-      if (j.title && rec.title) {
-        const a = words(j.title), b = new Set(words(rec.title));
-        if (!a.length || a.filter(w => b.has(w)).length / a.length < 0.7) return rec;
-      }
-      const ex = j.externalIds || {};
-      rec.arxiv = rec.arxiv || ex.ArXiv || '';
-      rec.doi = rec.doi || ex.DOI || '';
-      rec.pdf = rec.pdf || (rec.arxiv ? 'https://arxiv.org/pdf/' + rec.arxiv : (j.openAccessPdf && j.openAccessPdf.url) || '');
-      rec.citations = j.citationCount;
-      rec.s2 = j.url || '';
-      rec.s2id = j.paperId || '';
-    } catch (e) {}
-    if (rec.arxiv && !rec.pdf) rec.pdf = 'https://arxiv.org/pdf/' + rec.arxiv;
-    return rec;
-  }
-
-  async function cacheGet(k) {
-    if (mem.has(k)) return mem.get(k);
-    if (!hasStore) return null;
-    const o = (await chrome.storage.local.get('ref:' + k))['ref:' + k];
-    if (o && Date.now() - o.at < TTL) { mem.set(k, o); return o; }
-    return null;
-  }
-  function cachePut(k, v) { v.at = Date.now(); mem.set(k, v); if (hasStore) chrome.storage.local.set({ ['ref:' + k]: v }); }
-
-  const pending = new Map();
-  async function resolve(entry, opts = {}) {
-    const k = hash(entry);
-    if (!opts.force) { const c = await cacheGet(k); if (c) return c; }
-    if (pending.has(k)) return pending.get(k);
-    const p = (async () => {
-      const id = ids(entry);
-      let rec = null, how = '', status = 'none';
-      try {
-        if (id.doi) { rec = await byDoi(id.doi); how = 'DOI in the reference'; status = 'verified'; }
-      } catch (e) {}
-      try {
-        if (!rec && id.arxiv) { rec = await byArxiv(id.arxiv); if (rec) { how = 'arXiv id in the reference'; status = 'verified'; } }
-      } catch (e) {}
-      if (!rec) {
-        let best = null;
-        const consider = (list, src) => list.forEach(c => { const sc = score(entry, c); if (!best || sc.s > best.sc.s) best = { c, sc, src }; });
-        try { consider(await searchCrossref(entry), 'Crossref'); } catch (e) {}
-        if (!best || best.sc.s < 0.85) { try { consider(await searchArxiv(entry), 'arXiv'); } catch (e) {} }
-        if (best) {
-          const { titleScore, author, year } = best.sc;
-          if (titleScore >= 0.8 && author && (year || !id.years.length)) status = 'verified';
-          else if (titleScore >= 0.6 && (author || year)) status = 'likely';
-          if (status !== 'none') { rec = best.c; how = best.src + ' match (title' + (author ? ', author' : '') + (year ? ', year' : '') + ')'; }
-        }
-      }
-      if (rec) await enrich(rec);
-      const out = Object.assign({ status, how, entry }, rec || {});
-      if (status !== 'none' || !opts.noCacheMiss) cachePut(k, out);
-      return out;
-    })().finally(() => pending.delete(k));
-    pending.set(k, p);
-    return p;
-  }
-
-  const AXID = /arxiv\.org\/(?:abs|pdf)\/([0-9]{4}\.[0-9]{4,5}|[a-z\-]+(?:\.[A-Z]{2})?\/[0-9]{7})/i;
-  function sameTitle(a, b) {
-    const A = words(a), B = new Set(words(b));
-    if (!A.length || !B.size) return false;
-    const hit = A.filter(w => B.has(w)).length;
-    return hit / Math.max(A.length, B.size) >= 0.8;
-  }
-  const famOf = rec => norm((rec.authors && rec.authors[0] && rec.authors[0].family) || '').split(' ').pop();
-  function fromOpenAlex(w, rec) {
-    if (!w || (rec.title && w.title && !sameTitle(w.title, rec.title))) return '';
-    for (const l of w.locations || []) { const m = ((l.landing_page_url || '') + ' ' + (l.pdf_url || '')).match(AXID); if (m) return m[1].replace(/v\d+$/, ''); }
+  const AXID=/(?<![\w.-])arxiv\.org\/(?:abs|pdf)\/(\d{4}\.\d{4,5}|[a-z-]+(?:\.[a-z]{2})?\/\d{7})/i;
+  const famOf=rec=>norm(rec.authors?.[0]?.family||'');
+  async function arxivOf(rec){
+    const proposals=[];if(rec.arxiv)proposals.push(rec.arxiv);
+    if(!proposals.length && rec.doi)try{const w=await J('https://api.openalex.org/works/doi:'+encodeURIComponent(rec.doi)+'?select=title,doi,locations');if(sameTitle(w.title,rec.title)&&cleanDoi(w.doi).toLowerCase()===cleanDoi(rec.doi).toLowerCase())for(const l of w.locations||[]){const id=((l.landing_page_url||'')+' '+(l.pdf_url||'')).match(AXID)?.[1];if(id)proposals.push(id);}}catch{}
+    if(!proposals.length && rec.doi)try{const j=await J('https://api.semanticscholar.org/graph/v1/paper/DOI:'+encodeURIComponent(rec.doi)+'?fields=title,externalIds');if(cleanDoi(j.externalIds?.DOI).toLowerCase()===cleanDoi(rec.doi).toLowerCase() && linkedTitle(j.title,rec.title,true) && j.externalIds?.ArXiv)proposals.push(j.externalIds.ArXiv);}catch{}
+    const valid=c=>linkedTitle(c.title,rec.title,rec.doi&&c.doi&&cleanDoi(rec.doi).toLowerCase()===cleanDoi(c.doi).toLowerCase())&&!!famOf(rec)&&(c.authors||[]).some(a=>norm(a.family)===famOf(rec))&&(!rec.doi||!c.doi||cleanDoi(rec.doi).toLowerCase()===cleanDoi(c.doi).toLowerCase());
+    for(const id of [...new Set(proposals)])try{const c=await byArxiv(id);if(valid(c))return c.arxiv;}catch{}
+    if(rec.title)try{const w=words(rec.title).slice(0,7);const list=await queryArxiv({search_query:w.map(w=>'ti:'+w).join(' AND ')+(famOf(rec)?' AND au:'+famOf(rec):'')});const hits=list.filter(valid);if(hits.length===1)return hits[0].arxiv;}catch{}
     return '';
   }
-  async function arxivOf(rec) {
-    if (rec.arxiv) return rec.arxiv;
-    if (rec.arxivChecked && Date.now() - rec.arxivChecked < 1000 * 60 * 60 * 24 * 7) return '';
-    let id = '';
-    const fam = famOf(rec);
-    if (rec.doi) { try { id = fromOpenAlex(await J('https://api.openalex.org/works/doi:' + encodeURIComponent(rec.doi) + '?select=title,locations'), rec); } catch (e) {} }
-    if (!id && rec.doi) {
-      try {
-        const j = await J('https://api.semanticscholar.org/graph/v1/paper/DOI:' + encodeURIComponent(rec.doi) + '?fields=title,externalIds');
-        if (!rec.title || sameTitle(j.title || '', rec.title)) id = ((j.externalIds || {}).ArXiv || '').replace(/v\d+$/, '');
-      } catch (e) {}
-    }
-    if (!id && rec.title) {
-      try {
-        const j = await J('https://api.openalex.org/works?per-page=5&select=title,locations,authorships,publication_year&filter=title.search:' + encodeURIComponent(norm(rec.title).slice(0, 200)));
-        for (const w of j.results || []) {
-          const au = (w.authorships || []).map(x => norm((x.author && x.author.display_name) || ''));
-          if (fam && !au.some(n => n.split(' ').includes(fam))) continue;
-          if ((id = fromOpenAlex(w, rec))) break;
-        }
-      } catch (e) {}
-    }
-    if (!id && rec.title) {
-      try {
-        const tw = words(rec.title).filter(x => !/^\d+$/.test(x)).slice(0, 10);
-        if (tw.length >= 2) {
-          const q = tw.map(x => 'ti:' + x).join(' AND ') + (fam ? ' AND au:' + fam : '');
-          for (const c of fromArxiv(await X('https://export.arxiv.org/api/query?max_results=8&search_query=' + encodeURIComponent(q)))) {
-            const doiMatch = rec.doi && c.doi && c.doi.toLowerCase() === rec.doi.toLowerCase();
-            const au = norm((c.authors || []).map(a => a.family).join(' '));
-            if (doiMatch || (sameTitle(c.title, rec.title) && (!fam || au.split(' ').includes(fam)))) { id = c.arxiv; break; }
-          }
-        }
-      } catch (e) {}
-    }
-    rec.arxivChecked = Date.now();
-    if (id) { rec.arxiv = id; rec.arxivFound = true; }
-    if (rec.entry) cachePut(hash(rec.entry), rec);
-    return id;
+  async function sources(rec){if(!rec||rec.status!=='verified')return [];const out=[];if(rec.pdf&&!/arxiv\.org/i.test(rec.pdf))out.push({url:rec.pdf,kind:'journal'});const ax=await arxivOf(rec);if(ax)out.push({url:'https://arxiv.org/pdf/'+ax,kind:'arxiv',id:ax});return out;}
+  async function bibtex(rec){if(rec.status&&rec.status!=='verified')throw new Error('Reference not verified');if(rec.doi){for(const url of ['https://api.crossref.org/works/'+encodeURIComponent(rec.doi)+'/transform/application/x-bibtex'])try{const bib=await X(url);if(/^\s*@\w+\s*[{(]/.test(bib))return bib.trim();}catch{}}
+    const esc=s=>String(s||'').replace(/[\\{}%&#_$]/g,c=>'\\'+c);const key=norm(rec.authors?.[0]?.family||'anon').replace(/\s/g,'')+(rec.year||'');const fields=[['title',rec.title],['author',(rec.authors||[]).map(a=>(a.family+(a.given?', '+a.given:''))).join(' and ')],['journal',rec.venue],['year',rec.year],['volume',rec.volume],['pages',rec.pages],['doi',rec.doi],['eprint',rec.arxiv],['archivePrefix',rec.arxiv?'arXiv':''],['url',rec.url]].filter(x=>x[1]);return `@${rec.venue&&rec.venue!=='arXiv preprint'?'article':'misc'}{${key},\n`+fields.map(([k,v])=>'  '+k+' = {'+esc(v)+'}').join(',\n')+'\n}';
   }
-  async function sources(rec) {
-    const out = [];
-    const ax = await arxivOf(rec);
-    if (rec.pdf && !/arxiv\.org/i.test(rec.pdf)) out.push({ url: rec.pdf, kind: 'journal' });
-    if (ax) out.push({ url: 'https://arxiv.org/pdf/' + ax, kind: 'arxiv', id: ax });
-    if (!out.length && rec.pdf) out.push({ url: rec.pdf, kind: /arxiv\.org/i.test(rec.pdf) ? 'arxiv' : 'journal' });
-    return out;
-  }
-
-  async function bibtex(rec) {
-    if (rec.doi) {
-      try { const r = await fetch('https://api.crossref.org/works/' + encodeURIComponent(rec.doi) + '/transform/application/x-bibtex'); if (r.ok) return (await r.text()).trim(); } catch (e) {}
-      try { const r = await fetch('https://doi.org/' + rec.doi, { headers: { Accept: 'application/x-bibtex' } }); if (r.ok) return (await r.text()).trim(); } catch (e) {}
-    }
-    const fam = norm((rec.authors && rec.authors[0] && rec.authors[0].family) || 'anon').split(' ').pop();
-    const key = fam + (rec.year || '') + (words(rec.title)[0] || '');
-    const f = [
-      ['title', '{' + rec.title + '}'], ['author', (rec.authors || []).map(a => (a.family + (a.given ? ', ' + a.given : ''))).join(' and ')],
-      ['journal', rec.venue && rec.venue !== 'arXiv preprint' ? rec.venue : ''], ['year', rec.year || ''], ['volume', rec.volume || ''], ['pages', rec.pages || ''],
-      ['doi', rec.doi || ''], ['eprint', rec.arxiv || ''], ['archivePrefix', rec.arxiv ? 'arXiv' : ''], ['url', rec.url || '']
-    ].filter(x => x[1]);
-    return `@${rec.venue && rec.venue !== 'arXiv preprint' ? 'article' : 'misc'}{${key},\n` + f.map(([a, b]) => `  ${a} = {${String(b).replace(/^\{|\}$/g, '')}}`).join(',\n') + '\n}';
-  }
-
-  const authorsShort = a => !a || !a.length ? '' : a.length <= 3 ? a.map(x => x.family).join(', ') : a[0].family + ' et al.';
-  const cached = entry => cacheGet(hash(entry));
-  return { resolve, cached, ids, score, bibtex, arxivOf, sources, sameTitle, authorsShort, norm, words, hash, _fromCrossref: fromCrossref, _fromArxiv: fromArxiv };
+  const authorsShort=a=>!a?.length?'':a.length<=3?a.map(a=>a.family).join(', '):a[0].family+' et al.';
+  return {resolve,cached:async()=>null,ids,score,titleIn,authorsIn,bibtex,arxivOf,sources,sameTitle,authorsShort,norm,words,hash,_fromCrossref:fromCrossref,_fromArxiv:fromArxiv};
 })();
+if(typeof module!=='undefined')module.exports=Ref;

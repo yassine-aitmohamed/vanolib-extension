@@ -24,8 +24,10 @@ input.q{width:100%;padding:9px 12px;border:1px solid var(--bd);border-radius:10p
 .hit{display:flex;gap:10px;padding:6px 0;border-top:1px solid var(--bd);cursor:pointer;font-size:13px;color:var(--mu)}.hit:hover{color:var(--tx)}
 .hit b.p{flex:none;color:var(--ac);font-weight:600;width:44px}.hit mark{background:rgba(255,212,0,.55);color:inherit;border-radius:2px;padding:0 1px}
 .idx{color:var(--mu);font-size:12px;margin-top:6px}
+.btn.ghost{border-color:var(--bd);color:var(--mu);font-weight:500}.btn.ghost:hover{border-color:var(--ac);color:var(--ac)}
 </style></head><body><main>
-<header><img src="icons/48.png" alt=""><h1>Reading list</h1><button class="btn" id="open">Open a PDF…</button></header>
+<header><img src="icons/48.png" alt=""><h1>Reading list</h1><button class="btn ghost" id="exp" title="Save all your highlights, drawings, texts and comments in one file">Export annotations</button><button class="btn ghost" id="imp" title="Add the annotations of an exported file (nothing is overwritten)">Import…</button><input type="file" id="impf" accept=".json,application/json" hidden><button class="btn" id="open">Open a PDF…</button></header>
+<div id="note" class="idx" style="margin:-8px 0 12px"></div>
 <div class="tabs"><button data-t="saved" class="on">★ Saved <span id="nS"></span></button><button data-t="recent">Recently opened <span id="nR"></span></button></div>
 <input class="q" id="q" placeholder="Search titles, addresses — and the full text of your saved PDFs…">
 <div id="list"></div>

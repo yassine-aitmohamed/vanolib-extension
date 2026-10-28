@@ -2,19 +2,20 @@ const P = new URLSearchParams(location.search);
 const FILE = P.get('file') || '';
 const OVL = P.get('ovl') || '';
 const KEY = OVL ? 'ovl:' + OVL : VL.keyOf(FILE);
-let BYTES = null, R = null, SAVE_BTN = null, TITLE = '';
+let BYTES = null, R = null, SAVE_BTN = null, TITLE = '', LOAD_META = {}, FREE_ERROR = ''; 
 
 (async () => {
-  const theme = (await VL.get('theme')) || 'day';
+  const theme = ReadingTheme.apply(await ReadingTheme.get());
   R = new Reader(document.getElementById('host'), {
     side: false, hlTab: true, theme,
-    onTheme: t => VL.set('theme', t),
+    onTheme: t => { ReadingTheme.apply(t); ReadingTheme.set(t).catch(() => {}); },
     loadDoc: async k => ({ state: await VL.get('st:' + k), highlights: await VL.get('hl:' + k) }),
     persist: (k, snap) => { VL.set('st:' + k, snap); if (FILE && k === KEY) VL.touch(FILE, { page: snap.page, pages: snap.pages }); },
     saveHL: (k, h) => VL.set('hl:' + k, h),
     openUrl: u => window.open(u, '_blank', 'noopener'),
     onFile: d => R.open(d)
   });
+  ReadingTheme.watch(theme => { ReadingTheme.apply(theme); R.setTheme(theme, true); });
   const rtb = R.rdr.querySelector('.rtb');
   const add = (html, title, fn) => { const b = document.createElement('button'); b.className = 'vl-x'; b.innerHTML = html; b.title = title; b.onclick = fn; rtb.appendChild(b); return b; };
   if (!OVL) SAVE_BTN = add('☆ <span class="lb">Save</span>', 'Save to your reading list (kept offline, ⌘D)', toggleSave);
@@ -31,7 +32,7 @@ let BYTES = null, R = null, SAVE_BTN = null, TITLE = '';
   }, true);
   if (OVL) return openOverleaf();
   if (!FILE) { R.empty('<b>VanoLib Reader</b>Open a PDF in Chrome, or drop a file here.'); return; }
-  const name = VL.nameOf(FILE);
+  const name = P.get('title') || VL.nameOf(FILE);
   TITLE = name;
   document.title = name + ' — VanoLib Reader';
   R.empty('Loading…');
@@ -41,24 +42,19 @@ let BYTES = null, R = null, SAVE_BTN = null, TITLE = '';
   try {
     if (cached) BYTES = cached;
     else BYTES = await fetchPdf(FILE);
-    if (!BYTES && /^https?:/.test(FILE)) { R.empty('Getting the PDF with your journal login…'); BYTES = await viaDownload(FILE); }
     if (!BYTES) {
-      await rememberNative(FILE);
-      location.replace(FILE + (FILE.includes('#') ? '&' : '#') + 'novanolib');
-      return;
+      if (await openFreeVersion()) return;
+      showLoadError('The publisher did not provide an accessible PDF.'); return;
     }
   } catch (e) {
-    const err = document.getElementById('vlErr');
-    err.style.display = 'grid';
-    err.innerHTML = '<div><b>Could not load this PDF</b><br>' + ESCV(String(e.message || e)) +
-      (FILE.startsWith('file:') ? '<br><br>For files on your Mac: chrome://extensions → VanoLib Reader → Details → turn on “Allow access to file URLs”.' : '') +
-      '<br><br><a href="' + ESCV(FILE) + '#novanolib">Open with Chrome’s PDF viewer</a></div>';
-    return;
+    if (await openFreeVersion()) return;
+    showLoadError(String(e.message || e)); return;
   }
   const buf = BYTES;
   await R.open({ key: KEY, title: name, bytes: () => new Uint8Array(buf.slice(0)) });
   Cite.attach(R);
   Research.attach(R);
+  if (P.get('origin')) showVersionBanner();
   try { await Annot.attach(R, KEY); } catch (e) { console.warn('annotations', e); }
   try {
     const md = await R.pdf.getMetadata();
@@ -102,20 +98,47 @@ function isPdf(buf) {
   return false;
 }
 async function fetchPdf(url, depth = 0) {
-  let r = await fetch(url, { credentials: 'include', redirect: 'follow' });
-  if (!r.ok && depth === 0) r = await fetch(url, { redirect: 'follow' });
-  if (!r.ok) throw new Error('HTTP ' + r.status);
-  const buf = await r.arrayBuffer();
-  if (isPdf(buf)) return buf;
+  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 25000);
+  let response, buf;
+  try {
+    response = await fetch(url, { credentials: 'include', redirect: 'follow', signal: controller.signal, cache: 'no-store' });
+    buf = await response.arrayBuffer();
+  } finally { clearTimeout(timer); }
+  if (response.ok && isPdf(buf)) return buf;
+  const html = new TextDecoder().decode(buf.slice(0, 1000000));
+  const meta = FreePaper.metadata(html, response.url || url);
+  if (meta.doi || meta.title) LOAD_META = meta;
+  if (depth < 2 && meta.pdf && meta.pdf !== url) return fetchPdf(meta.pdf, depth + 1);
+  if (!response.ok) throw new Error('HTTP ' + response.status);
   if (depth < 1) {
-    const html = new TextDecoder().decode(buf.slice(0, 400000));
-    const m = html.match(/<meta[^>]+http-equiv=["']?refresh["']?[^>]+url=([^"'>\s]+)/i)
-      || html.match(/<(?:iframe|embed)[^>]+src=["']([^"']+)["']/i)
-      || html.match(/href=["']([^"']+\.pdf(?:\?[^"']*)?)["']/i)
-      || html.match(/["'](https?:\/\/[^"'\s]+\/pdf[^"'\s]*)["']/i);
-    if (m) { try { return await fetchPdf(new URL(m[1].replace(/&amp;/g, '&'), r.url || url).href, depth + 1); } catch (e) {} }
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const candidate = [...doc.querySelectorAll('iframe[src],embed[src],a[href]')].map(n=>n.getAttribute('src')||n.getAttribute('href')).find(u=>/\.pdf(?:[?#]|$)|\/pdf\//i.test(u));
+    if (candidate) { const next = new URL(candidate, response.url || url); if (/^https?:$/.test(next.protocol) && next.href !== url) return fetchPdf(next.href, depth + 1); }
   }
   return null;
+}
+async function openFreeVersion() {
+  if (!/^https?:/.test(FILE) || P.get('origin')) return false;
+  R.empty('The publisher PDF is unavailable. Looking for the same article on arXiv…');
+  try {
+    const result = await FreePaper.find(FILE, LOAD_META, P.get('doi') || '');
+    if (!result) return false;
+    R.empty('Opening the verified arXiv preprint…');
+    location.replace(VL.viewer(result.url) + '&origin=' + encodeURIComponent(FILE) + '&title=' + encodeURIComponent(result.record.title));
+    return true;
+  } catch (e) { FREE_ERROR = e.message; return false; }
+}
+function showLoadError(message) {
+  const err = document.getElementById('vlErr'); err.style.display = 'grid';
+  err.innerHTML = '<div><b>PDF unavailable</b><p>' + ESCV(message) + '</p><p>' + ESCV(FREE_ERROR || 'No accessible version could be confirmed.') + '</p><p><a id="vlPublisher">Open the publisher page / Chrome viewer ↗</a></p></div>';
+  err.querySelector('a').href = FILE + (FILE.includes('#') ? '&' : '#') + 'novanolib';
+}
+function showVersionBanner() {
+  const banner = document.createElement('div'); banner.className = 'vl-version-banner';
+  banner.appendChild(document.createTextNode('arXiv preprint · The publisher PDF was unavailable. Numbering may differ. '));
+  const a = document.createElement('a'); a.textContent = 'Publisher version ↗';
+  const source = P.get('origin'); if (/^https?:/.test(source)) { a.href = source; a.target = '_blank'; a.rel = 'noopener'; banner.appendChild(a); }
+  R.rdr.querySelector('.rtb').insertAdjacentElement('afterend', banner);
 }
 async function viaDownload(url) {
   try {

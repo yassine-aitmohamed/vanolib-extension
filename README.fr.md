@@ -7,6 +7,14 @@ Cliquez sur une citation et voyez la référence aussitôt, et même le lemme ex
 
 ---
 
+## Nouveautés de la version 1.9
+
+- **Figures et tableaux à la demande.** Cliquez sur « Figure 3 », « Fig. 3 » ou « Table 2 » dans le texte, même sans lien, ou survolez un lien vers une figure : la figure ou le tableau apparaît avec sa légende, sans quitter votre place. Une ou deux colonnes, et dans l'aperçu d'Overleaf.
+- **Plus d'annotations.** Écrivez du texte directement sur la page (T), barrez une sélection, changez de couleur avec C ou choisissez la vôtre, effacez toutes les annotations d'un PDF en un clic (annuler les rétablit).
+- **Export et import des annotations.** Un seul fichier contient surlignages, dessins, textes et commentaires de tous vos PDF. L'import les rajoute, sur un autre ordinateur aussi, sans rien écraser.
+- **Citer en cinq styles.** Dans la fiche d'une référence vérifiée, **Cite** donne BibTeX, AMS, APA, MLA ou Chicago, copiés en un clic.
+- **Références plus fiables.** Les articles à deux colonnes avec l'espacement étroit de LaTeX sont de nouveau bien lus, et une étiquette coupée au bord de son lien (`Se1` pour `Se19`) est complétée, dans le lecteur et dans Overleaf. Chaque citation est associée à l'entrée imprimée dans le PDF courant.
+
 ## Nouveautés de la version 1.8
 
 - **Overleaf.** Un bouton **VanoLib** apparaît à côté de « Download PDF » dans Overleaf. Il ouvre le PDF compilé dans VanoLib Reader, et cet onglet se recharge au même endroit après chaque compilation.

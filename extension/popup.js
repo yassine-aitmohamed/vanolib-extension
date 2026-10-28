@@ -1,9 +1,17 @@
 (async () => {
+  document.getElementById('vl-popup-theme').appendChild(ReadingTheme.controls());
+  ReadingTheme.apply(await ReadingTheme.get());
+  ReadingTheme.watch(ReadingTheme.apply);
   const { auto = true, port = 8770 } = await chrome.storage.local.get(['auto', 'port']);
   const a = document.getElementById('auto'), p = document.getElementById('port');
   a.checked = auto; p.value = port;
   a.onchange = () => chrome.storage.local.set({ auto: a.checked });
   p.onchange = () => chrome.storage.local.set({ port: parseInt(p.value, 10) || 8770 });
+  document.getElementById('current').onclick = async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab && /^https?:/.test(tab.url || '')) chrome.tabs.create({ url: VL.viewer(tab.url) });
+    else document.getElementById('current').textContent = 'Open an article page first';
+  };
   document.getElementById('open').onclick = () => chrome.tabs.create({ url: chrome.runtime.getURL('viewer.html') });
   document.getElementById('list').onclick = () => chrome.tabs.create({ url: chrome.runtime.getURL('library.html') });
   const { nativeHosts = [] } = await chrome.storage.local.get('nativeHosts');

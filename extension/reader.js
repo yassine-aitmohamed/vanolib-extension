@@ -82,7 +82,7 @@ class Reader{
     else if(a==='sprev')this.stepHit(-1);
     else if(a==='copy'){const t=getSelection().toString();try{navigator.clipboard.writeText(t)}catch(e){document.execCommand('copy')}this.hideSel();this.toast('Copied')}
   }
-  setTheme(t,silent){if(!silent&&this.o.onTheme)this.o.onTheme(t);this.theme=t;this.rdr.classList.remove('t-day','t-sepia','t-night');this.rdr.classList.add('t-'+t);$$('.sw',this.rdr).forEach(b=>b.classList.toggle('on',b.dataset.t===t))}
+  setTheme(t,silent){if(!silent&&this.o.onTheme)this.o.onTheme(t);this.theme=t;this.rdr.classList.remove('t-day','t-sepia','t-night');this.rdr.classList.add('t-'+t);$$('.sw',this.rdr).forEach(b=>{b.classList.toggle('on',b.dataset.t===t);b.setAttribute('aria-pressed',String(b.dataset.t===t))});this.rdr.dispatchEvent(new CustomEvent('vl-themechange',{detail:t}))}
   empty(msg){const e=this.$('.rempty');e.style.display=msg?'grid':'none';if(msg)e.innerHTML=`<div>${msg}</div>`}
   snap(){const v=this.view;return{scale:this.scale,fit:this.fit,spread:this.spread,ratio:v.scrollTop/Math.max(1,v.scrollHeight-v.clientHeight),page:this.cur,pages:this.n}}
   saveState(){if(this.pdf&&this.key){this.states[this.key]=this.snap();this.persist(true)}}
@@ -90,7 +90,7 @@ class Reader{
   clear(){this.saveState();this.gen++;if(this.pdf)try{this.pdf.destroy()}catch(e){}this.pdf=null;this.key=null;this.pages.innerHTML='';this.pane.innerHTML='';this.$('.num').textContent='/ –';this.$('.pgin').value='–';this.$('.rprog i').style.width='0';this.closeSearch();this.empty('<b>No paper open</b>Pick an article, or drop a PDF here.')}
   openFile(name,buf){const doc={key:'file:'+name+':'+buf.byteLength,title:name.replace(/\.pdf$/i,''),bytes:()=>new Uint8Array(buf.slice(0)),file:true};if(this.o.onFile)this.o.onFile(doc);else this.open(doc)}
   async open(doc){
-    if(this.pdf&&this.key===doc.key)return;
+    if(this.pdf&&this.key===doc.key&&doc.revision&&this.revision===doc.revision)return;this.revision=doc.revision||null;
     this.saveState();const gen=++this.gen;
     if(this.pdf)try{this.pdf.destroy()}catch(e){}
     this.pdf=null;this.key=doc.key;this.title=doc.title||'';this.$('.title').textContent=this.title;
@@ -160,7 +160,7 @@ class Reader{
       const el=document.createElement('a');Object.assign(el.style,{left:x/W*100+'%',top:y/H*100+'%',width:w/W*100+'%',height:h/H*100+'%'});
       if(a.url){el.href=a.url;el.title=a.url;el.onclick=e=>{e.preventDefault();this.o.openUrl?this.o.openUrl(a.url):window.open(a.url,'_blank')}}
       else if(a.dest){el.title='Go to target';el.onclick=e=>{e.preventDefault();this.dest(a.dest)}}else continue;
-      L.appendChild(el)}}
+      el.__dest=a.dest;el.__page=i;el.__annotationId=a.id;el.__pdf=this.pdf;L.appendChild(el)}}
   async dest(dst){try{let d=dst;if(typeof d==='string')d=await this.pdf.getDestination(d);if(!Array.isArray(d))return;
     const idx=(typeof d[0]==='object'&&d[0])?await this.pdf.getPageIndex(d[0]):d[0];const k=d[1]&&d[1].name;
     const top=k==='XYZ'?d[3]:(k==='FitH'||k==='FitBH')?d[2]:null;this.goto(idx+1,top,true)}catch(e){}}

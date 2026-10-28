@@ -1,0 +1,8 @@
+/* Only the PDF preview surfaces are themed. Canvas pixels are never modified. */
+:root[data-vl-theme] .vl-ovl-surface{background:var(--vl-view)!important}
+:root[data-vl-theme] .vl-ovl-paper,:root[data-vl-theme] .vl-ovl-surface .page,:root[data-vl-theme] .vl-ovl-paper .canvasWrapper,:root[data-vl-theme] .vl-ovl-surface .page .canvasWrapper{--page-bg-color:var(--vl-paper)!important;background:var(--vl-paper)!important;border-color:var(--vl-border)!important}
+:root[data-vl-theme=sepia] .vl-ovl-paper canvas,:root[data-vl-theme=sepia] .vl-ovl-surface .page canvas{mix-blend-mode:multiply!important;filter:none!important}
+:root[data-vl-theme=night] .vl-ovl-paper canvas,:root[data-vl-theme=night] .vl-ovl-surface .page canvas{mix-blend-mode:normal!important;filter:var(--vl-filter)!important}
+:root[data-vl-theme=day] .vl-ovl-paper canvas,:root[data-vl-theme=day] .vl-ovl-surface .page canvas{mix-blend-mode:normal!important;filter:none!important}
+:root[data-vl-theme] .vl-ovl-paper .textLayer,:root[data-vl-theme] .vl-ovl-paper .annotationLayer{filter:none!important}
+@media print{:root[data-vl-theme] .vl-ovl-surface,:root[data-vl-theme] .vl-ovl-paper,:root[data-vl-theme] .vl-ovl-surface .page,:root[data-vl-theme] .vl-ovl-paper .canvasWrapper,:root[data-vl-theme] .vl-ovl-surface .page .canvasWrapper{background:#fff!important}:root[data-vl-theme] .vl-ovl-paper canvas,:root[data-vl-theme] .vl-ovl-surface .page canvas{filter:none!important;mix-blend-mode:normal!important}}

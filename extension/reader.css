@@ -96,6 +96,7 @@ button{font:inherit;background:none;border:0;cursor:pointer;color:inherit;paddin
 #vlCite .vc-a a{color:#2563eb;text-decoration:none;font-weight:600}#vlCite .vc-a a:hover{text-decoration:underline}
 .vl-x.vl-on{background:var(--rac)!important;color:#fff!important}
 @media (max-width:1500px){.vl-x .lb{display:none}}
+/* ---- annotations (annot.js) ---- */
 .pg svg.inkL{position:absolute;inset:0;width:100%;height:100%;z-index:3;pointer-events:none;overflow:visible}
 .pg .noteL{position:absolute;inset:0;z-index:4;pointer-events:none}
 .rdr.vl-inking .pg .textLayer{pointer-events:none}
@@ -103,6 +104,13 @@ button{font:inherit;background:none;border:0;cursor:pointer;color:inherit;paddin
 .rdr[data-tool=erase] .pg svg.inkL{pointer-events:auto;cursor:not-allowed}
 .rdr[data-tool=erase] .pg svg.inkL path{cursor:pointer}
 .rdr[data-tool=note] .pg .noteL{pointer-events:auto;cursor:copy}
+.rdr[data-tool=text] .pg .noteL{pointer-events:auto;cursor:text}
+.vltext{position:absolute;pointer-events:auto;cursor:pointer;z-index:5;white-space:pre-wrap;line-height:1.25;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-weight:500;max-width:60%;padding:1px 2px;border-radius:3px}
+.vltext:hover{outline:1px dashed currentColor}
+.rdr[data-tool=erase] .vltext{cursor:not-allowed}
+.vl-annbar .vl-cc{position:relative;width:13px;height:13px;border-radius:50%;cursor:pointer;border:2px solid transparent;background:conic-gradient(#e5484d,#f2c94c,#1f9d55,#2f6fed,#7c3aed,#e5484d);overflow:hidden}
+.vl-annbar .vl-cc.on{border-color:var(--rtx)}
+.vl-annbar .vl-cc input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;padding:0;border:0}
 .vlnote{position:absolute;transform:translate(-50%,-100%);pointer-events:auto;cursor:pointer;z-index:5}
 .vlnote .pin{font-size:18px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
 .vlnote .bub{display:none;position:absolute;left:50%;bottom:110%;transform:translateX(-50%);min-width:160px;max-width:280px;padding:8px 10px;border-radius:8px;background:#fffbe6;color:#222;font:13px/1.4 -apple-system,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.2);white-space:pre-wrap}
@@ -134,7 +142,13 @@ button{font:inherit;background:none;border:0;cursor:pointer;color:inherit;paddin
 #vlBib textarea{width:100%;height:170px;margin:8px 0;font:12px ui-monospace,Menlo,monospace;border:1px solid rgba(0,0,0,.15);border-radius:8px;padding:8px;box-sizing:border-box;resize:vertical}
 #vlBib button{border:1px solid rgba(0,0,0,.15);background:#fff;border-radius:8px;padding:5px 12px;margin-right:6px;cursor:pointer;font:600 12px sans-serif}
 #vlBib button.ok{background:#2563eb;color:#fff;border-color:transparent}
+#vlBib .vb-tabs{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+#vlBib .vb-tabs button{margin:0;font-weight:500;padding:4px 10px}
+#vlBib .vb-tabs button.on{border-color:#2563eb;color:#2563eb;font-weight:700}
+#vlBib .vb-tabs button:disabled{opacity:.4;cursor:default}
+#vlBib .vb-msg:empty{display:none}
 
+/* 1.6 — verified references */
 #vlCite .vc-st{font-size:11.5px;font-weight:700;margin:4px 0 2px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
 #vlCite .vc-st span{font-weight:400;color:var(--rmu,#6b6f76)}#vlCite .vc-st em{font-style:normal;font-weight:500;color:var(--rmu,#6b6f76);margin-left:auto}
 #vlCite .vc-ok{color:#1a7f4b}#vlCite .vc-maybe{color:#b26a00}#vlCite .vc-no{color:var(--rmu,#6b6f76);font-weight:500}
@@ -145,6 +159,7 @@ button{font:inherit;background:none;border:0;cursor:pointer;color:inherit;paddin
 #vlCite .vc-t.vc-raw{font-size:11.5px;color:var(--rmu,#6b6f76);border-left:2px solid var(--rbd,rgba(0,0,0,.1));padding-left:8px;margin:6px 0}
 #vlCite .vc-peek .vc-l{margin-bottom:6px}#vlCite .vc-peek .vc-l span{font-weight:400;color:var(--rmu,#6b6f76);margin-left:6px}
 #vlCite .vc-peek canvas{display:block;border-radius:6px;border:1px solid var(--rbd,rgba(0,0,0,.08))}
+/* research panel */
 .rdr.side.wide .rside{width:340px}.rdr.wide .rspane{min-width:340px}.rdr.wide .rstabs{min-width:316px}
 .rres{font-size:12.5px;color:var(--rtx)}.rres section{margin:4px 0 18px}
 .rres h4{font:600 11px/1 -apple-system,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--rmu);margin:10px 0 8px}
@@ -171,3 +186,32 @@ button{font:inherit;background:none;border:0;cursor:pointer;color:inherit;paddin
 #vlCite .vc-sa{display:flex;flex-wrap:wrap;gap:12px;font-size:12px}#vlCite .vc-sa:empty{display:none}
 #vlCite .vc-sa a{color:#2563eb;text-decoration:none;font-weight:600}#vlCite .vc-sa a:hover{text-decoration:underline}
 #vlCite .vc-note{flex-basis:100%;color:#b45309;font-size:12px}
+
+/* Internal targets: a structured reading panel, never a scaled page thumbnail. */
+#vlCite.vc-target-card{padding:0;max-height:calc(100vh - 24px);overflow:hidden;animation:none;border-radius:14px;background:var(--rpop,#fff);box-shadow:0 16px 60px #0003}
+.vc-target{display:flex;flex-direction:column;max-height:calc(100vh - 28px);min-height:150px}
+.vc-target-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:16px 18px 12px;border-bottom:1px solid var(--rbd,#e4e7ec)}
+.vc-target-titles{min-width:0;flex:1 1 230px}.vc-target-title{margin:0;font:600 19px/1.35 -apple-system,BlinkMacSystemFont,sans-serif;color:var(--rtx,#1f2328);overflow-wrap:anywhere}
+.vc-target-subtitle{margin:4px 0 0;font-size:12px;color:var(--rmu,#667085)}
+.vc-target-controls{display:flex;gap:5px;align-items:center;flex-wrap:wrap}.vc-target-controls button,.vc-target-footer button{padding:6px 10px;border:1px solid var(--rbd,#d0d5dd);border-radius:7px;background:var(--rpop,#fff);font:500 12px/1.3 -apple-system,BlinkMacSystemFont,sans-serif;cursor:pointer;color:var(--rtx,#1f2328)}
+.vc-target-controls button:hover,.vc-target-footer button:hover{border-color:#2563eb;color:#2563eb}.vc-target button:focus-visible,.vc-target-body:focus-visible{outline:2px solid #2563eb;outline-offset:-2px}.vc-target button:disabled{opacity:.45;cursor:default}.vc-target-zoom{font-variant-numeric:tabular-nums;font-size:12px;min-width:42px;text-align:center}
+.vc-target-close{font-size:15px!important}.vc-target-body{overflow:auto;overscroll-behavior:contain;min-height:0;max-height:min(62vh,650px);background:var(--rv,#f6f7f9);scrollbar-gutter:stable}
+.vc-target-pages{width:max-content;min-width:100%;padding:14px 16px}.vc-target-part{margin:0 0 14px;width:max-content}.vc-target-part:last-child{margin-bottom:0}.vc-target-part figcaption{font-size:11px;color:var(--rmu,#667085);margin:0 0 5px}
+#vlCite .vc-target-pages canvas{display:block;max-width:none;flex:none;background:#fff;border:1px solid var(--rbd,#e4e7ec);border-radius:4px;box-sizing:content-box;image-rendering:auto;transform:none;filter:none}
+#vlCite.vc-target-night .vc-target-pages canvas{filter:invert(.92) hue-rotate(180deg)}
+.vc-target-status{padding:12px 18px;color:var(--rmu,#667085);font-size:13px}.vc-target-status[hidden]{display:none}
+.vc-target-footer{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:11px 18px;border-top:1px solid var(--rbd,#e4e7ec);background:var(--rpop,#fff)}
+.vc-target-footer button:first-child{background:#2563eb;border-color:#2563eb;color:#fff}.vc-target-hint{margin-left:auto;font-size:11px;color:var(--rmu,#667085)}
+#vlCite.vc-target-expanded .vc-target-body{max-height:calc(100vh - 185px)}
+@media(max-width:600px){.vc-target-head{padding:12px;gap:8px}.vc-target-title{font-size:17px}.vc-target-controls{gap:4px}.vc-target-controls button{padding:6px 8px}.vc-target-footer{padding:10px 12px}.vc-target-hint{flex-basis:100%;margin:0}.vc-target-body{max-height:58vh}}
+
+#vlCite .vc-original{font-size:14px;line-height:1.65;color:var(--rtx,#1f2328);margin:8px 0 12px;padding:10px 12px;border:1px solid var(--rbd,#ddd);border-radius:8px;overflow-wrap:anywhere}#vlCite .vc-source{font-size:11px;color:var(--rmu,#667085)}#vlCite .vc-reason{font-size:12px;color:var(--rmu,#667085);margin:5px 0 8px}#vlCite .vc-ti{font-size:13px}#vlCite .vc-st{margin-top:8px}
+
+.vl-version-banner{flex:none;padding:8px 14px;font-size:12px;line-height:1.5;background:var(--rpop,#fff);color:var(--rtx,#222);border-bottom:1px solid var(--rbd,#ddd)}.vl-version-banner a{color:var(--rac,#2563eb);font-weight:600}
+
+/* Local Overleaf equation previews retain complete display geometry and can be enlarged. */
+#vlCite .vc-local-preview{display:block;overflow:auto;max-height:520px;padding:8px 0;min-height:55px}
+#vlCite .vc-local-preview canvas{max-width:none!important;flex:none;margin:0;box-shadow:none}
+#vlCite .vc-equation-tools{display:flex;align-items:center;gap:8px;padding:5px 0 8px;font-size:12px}
+#vlCite .vc-equation-tools button{border:1px solid var(--rbd,#ccc);border-radius:6px;padding:4px 9px;background:var(--rpop,#fff);color:var(--rtx,#222);font:inherit;cursor:pointer}
+#vlCite .vc-equation-tools button:focus-visible{outline:2px solid #2563eb}#vlCite .vc-equation-tools button:disabled{opacity:.4;cursor:default}

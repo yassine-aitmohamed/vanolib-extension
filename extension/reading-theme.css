@@ -1,0 +1,23 @@
+/* Shared palette. The host page's layout and editor colours are not overridden. */
+:root[data-vl-theme=day]{--vl-paper:#fff;--vl-view:#e7e5e0;--vl-panel:#fff;--vl-text:#1f2328;--vl-muted:#6b6f76;--vl-border:rgba(0,0,0,.1);--vl-filter:none}
+:root[data-vl-theme=sepia]{--vl-paper:#f4ead4;--vl-view:#d9ccb1;--vl-panel:#f8f1e2;--vl-text:#3b2f20;--vl-muted:#7a6a55;--vl-border:rgba(80,50,10,.16);--vl-filter:none}
+:root[data-vl-theme=night]{--vl-paper:#161618;--vl-view:#0e0e10;--vl-panel:#232327;--vl-text:#e6e3dd;--vl-muted:#9a968e;--vl-border:rgba(255,255,255,.13);--vl-filter:invert(.9) hue-rotate(180deg)}
+.vl-theme-controls{all:initial;display:inline-flex;align-items:center;gap:3px;margin:0 5px;vertical-align:middle;align-self:center}
+.vl-theme-controls .vl-theme-choice{all:initial;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:2px solid transparent;border-radius:50%;cursor:pointer}
+.vl-theme-choice .vl-theme-dot{display:block;box-sizing:border-box;width:17px;height:17px;border:1px solid #8888;border-radius:50%}
+.vl-theme-choice[data-vl-theme-choice=day] .vl-theme-dot{background:#fff}.vl-theme-choice[data-vl-theme-choice=sepia] .vl-theme-dot{background:#f4ead4}.vl-theme-choice[data-vl-theme-choice=night] .vl-theme-dot{background:#232327}
+.vl-theme-controls .vl-theme-choice[aria-pressed=true]{border-color:#2563eb}.vl-theme-controls .vl-theme-choice:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+/* Extension-owned cards inherit the same colours as the PDF. */
+:root[data-vl-theme] #vlCite,:root[data-vl-theme] #vlBib,:root[data-vl-theme] .vlpop,:root[data-vl-theme] #msg{--rpop:var(--vl-panel);--rtx:var(--vl-text);--rmu:var(--vl-muted);--rbd:var(--vl-border);--rv:var(--vl-view);background:var(--vl-panel);color:var(--vl-text);border-color:var(--vl-border)}
+:root[data-vl-theme=sepia] #vlCite .vc-img,:root[data-vl-theme=sepia] #vlCite .vc-target-part{background:var(--vl-paper)}
+:root[data-vl-theme=sepia] #vlCite .vc-img canvas,:root[data-vl-theme=sepia] #vlCite .vc-target-pages canvas{mix-blend-mode:multiply;filter:none}
+:root[data-vl-theme=night] #vlCite .vc-img canvas,:root[data-vl-theme=night] #vlCite .vc-target-pages canvas{filter:var(--vl-filter);mix-blend-mode:normal}
+:root[data-vl-theme=day] #vlCite .vc-img canvas,:root[data-vl-theme=day] #vlCite .vc-target-pages canvas{filter:none;mix-blend-mode:normal}
+@media print{.vl-theme-controls{display:none!important}}
+
+:root[data-vl-theme] #vlBib textarea,:root[data-vl-theme] .vlpop textarea{background:var(--vl-paper);color:var(--vl-text)}
+:root[data-vl-theme] #vlErr{background:var(--vl-view);color:var(--vl-text)}
+
+:root[data-vl-theme=sepia] .rdr .rth .c{background:var(--vl-paper)}:root[data-vl-theme=sepia] .rdr .rth canvas{mix-blend-mode:multiply}
+:root[data-vl-theme] body.vl-theme-popup{background:var(--vl-panel);color:var(--vl-text)}
+:root[data-vl-theme] .vl-theme-popup button{background:var(--vl-panel)}:root[data-vl-theme] .vl-theme-popup .pri{background:#2563eb;color:#fff}:root[data-vl-theme] .vl-theme-popup .rl li:hover{background:var(--vl-view)}

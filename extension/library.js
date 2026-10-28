@@ -88,6 +88,49 @@ async function fullText() {
     try { const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf.slice(0)), isEvalSupported: false }).promise; await VL.index(k, pdf, { url: x.url, title: x.title }); pdf.destroy(); } catch (e) {}
   }
 })();
+const say = t => { const n = document.getElementById('note'); n.textContent = t; clearTimeout(say.t); say.t = setTimeout(() => n.textContent = '', 8000); };
+document.getElementById('exp').onclick = async () => {
+  const all = await chrome.storage.local.get(null), titles = {};
+  [...(all.saved || []), ...(all.recent || [])].forEach(x => { if (x && x.url) titles[VL.keyOf(x.url)] = { title: x.title || '', url: x.url }; });
+  const items = {};
+  for (const [k, v] of Object.entries(all)) {
+    if (!/^(hl|ink):/.test(k)) continue;
+    const empty = k.startsWith('hl:') ? !(v || []).length : !(Object.values((v && v.strokes) || {}).some(a => a.length) || ((v && v.notes) || []).length || ((v && v.texts) || []).length);
+    if (!empty) items[k] = v;
+  }
+  const n = Object.keys(items).length;
+  if (!n) return say('No annotation to export yet.');
+  const docs = {}; Object.keys(items).forEach(k => { const d = k.replace(/^(hl|ink):/, ''); if (titles[d]) docs[d] = titles[d]; });
+  const blob = new Blob([JSON.stringify({ app: 'VanoLib Reader', kind: 'annotations', version: 1, exported: new Date().toISOString(), documents: docs, items }, null, 1)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'vanolib-annotations-' + new Date().toISOString().slice(0, 10) + '.json';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  say('Exported the annotations of ' + new Set(Object.keys(items).map(k => k.replace(/^(hl|ink):/, ''))).size + ' PDF(s).');
+};
+document.getElementById('imp').onclick = () => document.getElementById('impf').click();
+document.getElementById('impf').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  let o; try { o = JSON.parse(await f.text()); } catch (err) { return say('This file is not a VanoLib annotations file.'); }
+  if (!o || o.kind !== 'annotations' || typeof o.items !== 'object') return say('This file is not a VanoLib annotations file.');
+  const keys = Object.keys(o.items).filter(k => /^(hl|ink):/.test(k));
+  const cur = await chrome.storage.local.get(keys), out = {};
+  let added = 0;
+  const byId = (a, b) => { const ids = new Set(a.map(x => x && x.id)); const nw = b.filter(x => x && !ids.has(x.id)); added += nw.length; return a.concat(nw); };
+  for (const k of keys) {
+    const inc = o.items[k], old = cur[k];
+    if (k.startsWith('hl:')) { if (Array.isArray(inc)) out[k] = byId(Array.isArray(old) ? old : [], inc); continue; }
+    if (!inc || typeof inc !== 'object') continue;
+    const d = old && typeof old === 'object' ? JSON.parse(JSON.stringify(old)) : { strokes: {}, notes: [], texts: [] };
+    d.strokes = d.strokes || {}; d.notes = d.notes || []; d.texts = d.texts || [];
+    for (const [pg, list] of Object.entries(inc.strokes || {})) {
+      const have = new Set((d.strokes[pg] = d.strokes[pg] || []).map(s => JSON.stringify(s)));
+      (list || []).forEach(s => { if (!have.has(JSON.stringify(s))) { d.strokes[pg].push(s); added++; } });
+    }
+    d.notes = byId(d.notes, inc.notes || []); d.texts = byId(d.texts, inc.texts || []);
+    out[k] = d;
+  }
+  await chrome.storage.local.set(out);
+  say(added ? 'Imported ' + added + ' annotation(s). Reopen a PDF to see them.' : 'Nothing new: these annotations are already here.');
+};
 document.getElementById('open').onclick = () => chrome.tabs.create({ url: chrome.runtime.getURL('viewer.html') });
 chrome.storage.onChanged.addListener(ch => { if (ch.saved || ch.recent) paint(); });
 paint();

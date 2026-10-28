@@ -7,6 +7,14 @@ Click a citation and see the reference instantly, and even the exact lemma it po
 
 ---
 
+## What's new in 1.9
+
+- **Figures and tables on demand.** Click "Figure 3", "Fig. 3" or "Table 2" in the text, even without a link, or hover a link to a figure: the figure or table appears with its caption, without leaving your place. It works on one and two columns, and in Overleaf's preview.
+- **More ways to annotate.** Write text directly on the page (T), strike through a selection, cycle colours with C or pick your own, and clear all annotations of a PDF in one click (undo brings them back).
+- **Export and import annotations.** One file holds the highlights, drawings, texts and comments of all your PDFs. Importing adds them back, on another computer too, without overwriting anything.
+- **Cite in five styles.** In a verified reference card, **Cite** gives BibTeX, AMS, APA, MLA or Chicago, copied in one click.
+- **More reliable references.** Two-column articles with LaTeX's narrow column gap are read correctly again, and a label cut at the edge of its link (`Se1` for `Se19`) is completed to the whole word, in the reader and in Overleaf. Citations are always matched to the entry printed in the current PDF.
+
 ## What's new in 1.8
 
 - **Overleaf.** A **VanoLib** button appears next to "Download PDF" in Overleaf. It opens the compiled PDF in VanoLib Reader, and that tab reloads at the same place after each compile.

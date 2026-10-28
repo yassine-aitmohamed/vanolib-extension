@@ -1,7 +1,7 @@
 const Annot = (() => {
   const COLORS = ['#e5484d', '#2f6fed', '#1f9d55', '#111111', '#f2c94c', '#ff69a5'];
   const NS = 'http://www.w3.org/2000/svg';
-  let R, KEY, data = { strokes: {}, notes: [] }, tool = '', color = COLORS[0], width = 2, saveT = null, drawing = null, bar = null;
+  let R, KEY, data = { strokes: {}, notes: [], texts: [] }, tool = '', color = COLORS[0], width = 2, saveT = null, drawing = null, bar = null;
 
   const persist = () => { clearTimeout(saveT); saveT = setTimeout(() => chrome.storage.local.set({ ['ink:' + KEY]: data }), 400); };
   let undoS = [], redoS = [], last = '', restoring = false, baseChanged = null;
@@ -35,7 +35,7 @@ const Annot = (() => {
       d.appendChild(svg);
       const nl = document.createElement('div'); nl.className = 'noteL'; d.appendChild(nl);
       svg.addEventListener('pointerdown', e => down(e, i));
-      nl.addEventListener('click', e => { if (tool === 'note' && e.target === nl) placeNote(e, i); });
+      nl.addEventListener('click', e => { if (e.target !== nl) return; if (tool === 'note') placeNote(e, i); else if (tool === 'text') placeText(e, i); });
     }
     return { svg, nl: d.querySelector('.noteL') };
   }
@@ -63,6 +63,13 @@ const Annot = (() => {
     l.nl.innerHTML = data.notes.filter(n => n.page === i).map(n =>
       `<div class="vlnote" data-id="${n.id}" style="left:${n.x * 100}%;top:${n.y * 100}%"><span class="pin">💬</span><div class="bub">${esc(n.text) || '<i>Empty note</i>'}</div></div>`).join('');
     l.nl.querySelectorAll('.vlnote').forEach(el => el.onclick = e => { e.stopPropagation(); editNote(el.dataset.id); });
+    (data.texts || []).filter(t => t.page === i).forEach(t => {
+      const el = document.createElement('div'); el.className = 'vltext'; el.dataset.id = t.id;
+      el.textContent = t.text;
+      Object.assign(el.style, { left: (t.x * 100) + '%', top: (t.y * 100) + '%', color: t.c, fontSize: (t.s * (R.scale || 1)) + 'px' });
+      el.onclick = e => { e.stopPropagation(); if (tool === 'erase') { data.texts = data.texts.filter(x => x.id !== t.id); drawPage(i); save(); } else editText(t.id); };
+      l.nl.appendChild(el);
+    });
   }
   function drawAll() { for (let i = 1; i <= R.n; i++) drawPage(i); }
 
@@ -80,6 +87,17 @@ const Annot = (() => {
     svg.onpointerup = () => { if (drawing && drawing.st.pts.length < 2) data.strokes[i].pop(); drawing = null; svg.onpointermove = null; drawPage(i); save(); };
   }
 
+  function placeText(e, i) {
+    const r = e.currentTarget.getBoundingClientRect();
+    const t = { id: 't' + Date.now(), page: i, x: +((e.clientX - r.left) / r.width).toFixed(4), y: +((e.clientY - r.top) / r.height).toFixed(4), text: '', c: color, s: 13 };
+    popup(`<textarea placeholder="Text to write on the page…"></textarea>`, v => { if (!v) return; t.text = v; (data.texts = data.texts || []).push(t); drawPage(i); save(); }, null, 'Text on the page');
+  }
+  function editText(id) {
+    const t = (data.texts || []).find(x => x.id === id); if (!t) return;
+    popup(`<textarea>${esc(t.text)}</textarea>`, v => { if (v) t.text = v; else data.texts = data.texts.filter(x => x.id !== id); drawPage(t.page); save(); },
+      () => { data.texts = data.texts.filter(x => x.id !== id); drawPage(t.page); save(); }, 'Text on the page');
+  }
+
   function placeNote(e, i) {
     const r = e.currentTarget.getBoundingClientRect();
     const n = { id: 'n' + Date.now(), page: i, x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height, text: '' };
@@ -90,17 +108,27 @@ const Annot = (() => {
     popup(`<textarea placeholder="Write your comment…">${esc(n.text)}</textarea>`, v => { n.text = v; drawPage(n.page); save(); },
       () => { data.notes = data.notes.filter(x => x.id !== id); drawPage(n.page); save(); });
   }
-  function popup(html, onSave, onDelete) {
+  function popup(html, onSave, onDelete, heading) {
     document.querySelectorAll('.vlpop').forEach(x => x.remove());
     const p = document.createElement('div'); p.className = 'vlpop';
-    p.innerHTML = `<b>Comment</b>${html}<div class="row">${onDelete ? '<button class="del">Delete</button>' : ''}<span></span><button class="cancel">Cancel</button><button class="ok">Save</button></div>`;
+    p.innerHTML = `<b>${heading || 'Comment'}</b>${html}<div class="row">${onDelete ? '<button class="del">Delete</button>' : ''}<span></span><button class="cancel">Cancel</button><button class="ok">Save</button></div>`;
     (document.fullscreenElement || document.body).appendChild(p);
-    const ta = p.querySelector('textarea'); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
-    const close = () => p.remove();
-    p.querySelector('.ok').onclick = () => { onSave(ta.value.trim()); close(); };
+    const ta = p.querySelector('textarea'), close = () => p.remove();
+    if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+    p.querySelector('.ok').onclick = () => { onSave(ta ? ta.value.trim() : ''); close(); };
     p.querySelector('.cancel').onclick = close;
     if (onDelete) p.querySelector('.del').onclick = () => { onDelete(); close(); };
-    ta.onkeydown = e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) p.querySelector('.ok').click(); if (e.key === 'Escape') close(); e.stopPropagation(); };
+    if (ta) ta.onkeydown = e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) p.querySelector('.ok').click(); if (e.key === 'Escape') close(); e.stopPropagation(); };
+    return p;
+  }
+  function clearAll() {
+    const n = Object.values(data.strokes).reduce((s, a) => s + a.length, 0) + data.notes.length + (data.texts || []).length + (R.hls[R.key] || []).length;
+    if (!n) return R.toast('No annotation on this PDF');
+    const p = popup(`<p style="margin:0">Remove all ${n} annotation${n > 1 ? 's' : ''} of this PDF? You can still undo it (⌘Z).</p>`, () => {
+      data = { strokes: {}, notes: [], texts: [] }; R.hls[R.key] = [];
+      drawAll(); R.drawAllHL(); baseChanged && baseChanged(); save(); R.toast('All annotations removed');
+    }, null, 'Clear annotations');
+    p.querySelector('.ok').textContent = 'Remove all';
   }
 
   function hookHighlights() {
@@ -110,6 +138,8 @@ const Annot = (() => {
     const lastHL = () => (R.hls[R.key] || [])[(R.hls[R.key] || []).length - 1];
     mk('<u>U</u>', 'Underline the selection', () => { const n0 = (R.hls[R.key] || []).length; R.addHL('blue');
       const h = lastHL(); if (h && (R.hls[R.key] || []).length > n0) { h.style = 'u'; h.uc = color === '#f2c94c' ? '#2f6fed' : color; Object.keys(h.parts).forEach(i => R.drawHL(+i)); R.changedHL(); } });
+    mk('<s>S</s>', 'Strike through the selection', () => { const n0 = (R.hls[R.key] || []).length; R.addHL('blue');
+      const h = lastHL(); if (h && (R.hls[R.key] || []).length > n0) { h.style = 's'; h.uc = color === '#f2c94c' ? '#e5484d' : color; Object.keys(h.parts).forEach(i => R.drawHL(+i)); R.changedHL(); } });
     mk('💬', 'Comment on the selection', () => { const n0 = (R.hls[R.key] || []).length; R.addHL('yellow');
       const h = lastHL(); if (h && (R.hls[R.key] || []).length > n0) editHLNote(h.id); });
     const base = R.drawHL.bind(R);
@@ -119,6 +149,7 @@ const Annot = (() => {
       (this.hls[this.key] || []).forEach(h => {
         const parts = h.parts[i] || [];
         if (h.style === 'u') L.querySelectorAll(`i[data-id="${h.id}"]`).forEach(e => { e.style.background = 'transparent'; e.style.borderBottom = `2px solid ${h.uc || '#2f6fed'}`; e.style.mixBlendMode = 'normal'; });
+        if (h.style === 's') L.querySelectorAll(`i[data-id="${h.id}"]`).forEach(e => { const c = h.uc || '#e5484d'; e.style.background = `linear-gradient(transparent calc(56% - 1px), ${c} calc(56% - 1px), ${c} calc(56% + 1px), transparent calc(56% + 1px))`; e.style.mixBlendMode = 'normal'; });
         if (h.note && parts.length && h.page === i) {
           const q = parts[0], pin = document.createElement('b'); pin.className = 'hlpin'; pin.textContent = '💬'; pin.title = h.note;
           Object.assign(pin.style, { left: (q[0] * 100) + '%', top: (q[1] * 100) + '%' });
@@ -154,7 +185,7 @@ const Annot = (() => {
     R.rdr.classList.toggle('vl-inking', !!tool);
     R.rdr.dataset.tool = tool;
     bar.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('vl-on', b.dataset.tool === tool));
-    if (tool) R.toast({ pen: 'Pen: draw on the page', hl: 'Highlighter: paint over lines', note: 'Comment: click where to add a note', erase: 'Eraser: click a stroke to remove it' }[tool]);
+    if (tool) R.toast({ pen: 'Pen: draw on the page', hl: 'Highlighter: paint over lines', text: 'Text: click where to write', note: 'Comment: click where to add a note', erase: 'Eraser: click a stroke or a text to remove it' }[tool]);
   }
   function buildBar() {
     const rtb = R.rdr.querySelector('.rtb');
@@ -164,35 +195,48 @@ const Annot = (() => {
       <button class="vl-redo" title="Redo (⌘⇧Z)" disabled>↷</button>
       <button data-tool="pen" title="Pen (P)">✎</button>
       <button data-tool="hl" title="Highlighter (H)">🖍</button>
+      <button data-tool="text" title="Write text on the page (T)">T</button>
       <button data-tool="note" title="Add a comment on the page (N)">💬</button>
       <button data-tool="erase" title="Eraser (E)">⌫</button>
-      <span class="vl-sw">${COLORS.map(c => `<i data-c="${c}" style="background:${c}"></i>`).join('')}</span>
+      <button class="vl-clear" title="Remove all annotations of this PDF">🗑</button>
+      <span class="vl-sw">${COLORS.map(c => `<i data-c="${c}" style="background:${c}"></i>`).join('')}<label class="vl-cc" title="Your own colour (C cycles the colours)"><input type="color" value="#7c3aed"></label></span>
       <select class="vl-w" title="Pen width"><option value="1.5">thin</option><option value="2.5" selected>medium</option><option value="4">thick</option></select>`;
     const anchor = rtb.querySelector('.title');
     rtb.insertBefore(bar, anchor);
     bar.querySelectorAll('[data-tool]').forEach(b => b.onclick = () => setTool(b.dataset.tool));
     bar.querySelector('.vl-undo').onclick = undo;
     bar.querySelector('.vl-redo').onclick = redo;
-    bar.querySelectorAll('.vl-sw i').forEach(s => s.onclick = () => { color = s.dataset.c; bar.querySelectorAll('.vl-sw i').forEach(x => x.classList.toggle('on', x === s)); chrome.storage.local.set({ inkColor: color }); });
+    bar.querySelectorAll('.vl-sw i').forEach(s => s.onclick = () => setColor(s.dataset.c));
+    bar.querySelector('.vl-cc input').oninput = e => setColor(e.target.value);
+    bar.querySelector('.vl-clear').onclick = clearAll;
     bar.querySelector('.vl-w').onchange = e => { width = +e.target.value; chrome.storage.local.set({ inkWidth: width }); };
     document.addEventListener('keydown', e => {
       if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const t = { p: 'pen', h: 'hl', n: 'note', e: 'erase' }[e.key.toLowerCase()];
-      if (t) { e.preventDefault(); setTool(t); } else if (e.key === 'Escape' && tool) setTool(tool);
+      const k = e.key.toLowerCase(), t = { p: 'pen', h: 'hl', t: 'text', n: 'note', e: 'erase' }[k];
+      if (t) { e.preventDefault(); setTool(t); }
+      else if (k === 'c') { e.preventDefault(); const all = [...COLORS, bar.querySelector('.vl-cc input').value]; setColor(all[(all.indexOf(color) + 1) % all.length]); R.toast('Colour'); }
+      else if (e.key === 'Escape' && tool) setTool(tool);
     });
+  }
+
+  function setColor(c) {
+    color = c;
+    bar.querySelectorAll('.vl-sw i').forEach(x => x.classList.toggle('on', x.dataset.c === c));
+    const cc = bar.querySelector('.vl-cc'); cc.classList.toggle('on', !COLORS.includes(c)); if (!COLORS.includes(c)) cc.querySelector('input').value = c;
+    chrome.storage.local.set({ inkColor: color });
   }
 
   async function attach(reader, key) {
     R = reader; KEY = key;
     const st = await chrome.storage.local.get(['ink:' + key, 'inkColor', 'inkWidth']);
-    data = st['ink:' + key] || { strokes: {}, notes: [] };
-    data.strokes = data.strokes || {}; data.notes = data.notes || [];
+    data = st['ink:' + key] || { strokes: {}, notes: [], texts: [] };
+    data.strokes = data.strokes || {}; data.notes = data.notes || []; data.texts = data.texts || [];
     color = st.inkColor || color; width = st.inkWidth || width;
     buildBar();
-    bar.querySelectorAll('.vl-sw i').forEach(x => x.classList.toggle('on', x.dataset.c === color));
+    setColor(color);
     bar.querySelector('.vl-w').value = String(width);
     hookHighlights();
     baseChanged = R.changedHL.bind(R);
@@ -202,5 +246,5 @@ const Annot = (() => {
     drawAll(); R.drawAllHL();
     last = snapshot(); paintUR();
   }
-  return { attach, hasData: () => Object.values(data.strokes).some(a => a.length) || data.notes.length };
+  return { attach, hasData: () => Object.values(data.strokes).some(a => a.length) || data.notes.length || (data.texts || []).length };
 })();

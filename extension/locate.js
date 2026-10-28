@@ -233,6 +233,33 @@ const Loc = (() => {
     return { segs, text, italic };
   }
 
+  function equationBlock(P, index) {
+    const tag = row => row.items.some(it => /^\(\s*[\w.\-′']+\s*\)$/.test(it.s.trim()) && (it.x <= P.left + 4 || it.x + it.w >= P.right - 4));
+    const proseLine = row => prose(row, 'rm') || prose(row, 'head') || PROOF.test(row.text) || ENDS.test(row.text);
+    let first = index, last = index;
+    for (let j=index-1; j>=0 && index-j<16; j--) {
+      const row=P.rows[j], next=P.rows[j+1];
+      if (tag(row) || proseLine(row) || row.y-next.y>P.body*2.6 || P.rows[index].y-row.y < -P.body*9) break;
+      first=j;
+    }
+    for (let j=index+1; j<P.rows.length && j-index<20; j++) {
+      const row=P.rows[j], previous=P.rows[j-1];
+      if (tag(row) || proseLine(row) || previous.y-row.y>P.body*2.6 || P.rows[index].y-row.y>P.body*10) break;
+      last=j;
+    }
+    const rows=P.rows.slice(first,last+1);
+    return { segs: [{ P, rows, equation: true }], text: rows.map(row=>row.text) };
+  }
+  function segmentBounds(segment) {
+    if (!segment.equation) return { top: clampTop(segment), bottom: clampBottom(segment) };
+    const padding=Math.max(6,segment.P.body*.8);
+    let top=Math.max(...segment.rows.map(row=>row.hi))+padding;
+    let bottom=Math.min(...segment.rows.map(row=>row.lo))-padding;
+    const minimum=segment.P.body*3.4;
+    if(top-bottom<minimum){const extra=(minimum-(top-bottom))/2;top+=extra;bottom-=extra;}
+    return { top, bottom };
+  }
+
   function clampTop(s) {
     const t = Math.max(...s.rows.map(r => r.hi)) + 1.5, i = s.P.rows.indexOf(s.rows[0]);
     const above = s.P.rows.slice(0, Math.max(0, i)).filter(r => r.y > t - 30 && r.h >= s.P.body * 0.9 && !s.rows.includes(r));
@@ -257,15 +284,11 @@ const Loc = (() => {
         else hit = await findHeading(D, loc);
         if (!hit) return { found: false, pages: D.pdf.numPages };
         if (hit.eq) {
-          const P = hit.P, y = hit.eq.y, h = P.body;
-          const rows = P.rows.filter(r => r.y <= y + h * 2.6 && r.y >= y - h * 1.6);
-          while (rows.length > 1 && rows[0].h < h * 0.9) rows.shift();
-          while (rows.length > 1 && rows[rows.length - 1].h < h * 0.9) rows.pop();
-          w = { segs: [{ P, rows }], text: rows.map(r => r.text) };
+          w = equationBlock(hit.P, hit.k);
         } else w = await walk(D, hit, loc.kind, loc.num);
         const segs = w.segs.filter(s => s.rows.length).map(s => ({
           page: s.P.i, left: s.P.left, right: s.P.right, P: s.P,
-          top: clampTop(s), bottom: clampBottom(s)
+          ...segmentBounds(s)
         }));
         const as = hit.as || label(loc);
         return { found: true, page: hit.P.i, top: segs[0].top, as, mismatch: loc.kind !== 'equation' && loc.kind !== 'section' && loc.kind !== 'page' && loc.kind !== 'statement' && !new RegExp('^' + NAME[loc.kind], 'i').test(as) && !(HEADS[loc.kind] || []).some(x => as.toLowerCase().startsWith(x.toLowerCase())), segs, text: w.text.join('\n'), pages: D.pdf.numPages };
@@ -285,7 +308,7 @@ const Loc = (() => {
     const k = P.rows.findIndex(r => r.y <= top + 2);
     if (k < 0) return { found: false };
     const done = (w, as) => {
-      const segs = w.segs.filter(s => s.rows.length).map(s => ({ page: s.P.i, left: s.P.left, right: s.P.right, P: s.P, top: clampTop(s), bottom: clampBottom(s) }));
+      const segs = w.segs.filter(s => s.rows.length).map(s => ({ page: s.P.i, left: s.P.left, right: s.P.right, P: s.P, ...segmentBounds(s) }));
       return segs.length ? { found: true, page: segs[0].page, top: segs[0].top, as, segs, text: w.text.join('\n') } : { found: false };
     };
     const h = P.body;
@@ -294,11 +317,8 @@ const Loc = (() => {
       let end = -1;
       for (let j = k; j < Math.min(P.rows.length, k + 10); j++) if (tagged(P.rows[j])) { end = j; break; }
       if (end < 0) end = Math.min(P.rows.length - 1, k + 2);
-      const rows = P.rows.slice(k, end + 1);
-      for (let j = end + 1; j < P.rows.length && P.rows[j].h < h * 0.9 && P.rows[j].y > P.rows[end].y - h; j++) rows.push(P.rows[j]);
-      while (rows.length > 1 && rows[0].h < h * 0.9) rows.shift();
       const tag = (P.rows[end].items.find(it => /^\(.*\)$/.test(it.s.trim())) || {}).s;
-      return done({ segs: [{ P, rows }], text: rows.map(r => r.text) }, tag ? tag.trim() : 'Equation');
+      return done(equationBlock(P,end), tag ? tag.trim() : 'Equation');
     }
     for (let j = k; j < Math.min(P.rows.length, k + 4); j++) {
       if (!anyHead.test(P.rows[j].text)) continue;
@@ -311,19 +331,124 @@ const Loc = (() => {
     return done({ segs: [{ P, rows }], text: rows.map(r => r.text) }, 'Target');
   }
 
-  async function render(res, width) {
-    const dpr = Math.min(devicePixelRatio || 1, 2.5), out = [];
+  const CAP = { figure: String.raw`Fig(?:ure|\.)?s?|Abb(?:ildung|\.)|Fig\s?ure`, table: String.raw`Tab(?:le|\.)?s?|Tableau|Tabelle` };
+  function crows(P) {
+    if (P.crows) return P.crows;
+    const mid = (P.left + P.right) / 2;
+    const split = r => { for (let q = 1; q < r.items.length; q++) { const a = r.items[q - 1], b = r.items[q]; if (a.x + a.w < mid + 2 && b.x > mid - 2 && b.x - (a.x + a.w) > r.h * 0.6) return q; } return -1; };
+    const main = P.rows.filter(r => r.h >= P.body * 0.8 && r.text.length > 20);
+    const two = main.length > 8 && main.filter(r => split(r) > 0 || r.x2 < mid + 4 || r.x > mid - 4).length > main.length * 0.6;
+    const piece = (r, items, col) => {
+      let t = '', prev = null;
+      for (const it of items) { if (prev && it.x - (prev.x + prev.w) > Math.min(prev.h, it.h) * 0.12 && !/\s$/.test(t)) t += ' '; t += it.s; prev = it; }
+      const h = Math.max(...items.map(it => it.h));
+      return { src: r, col, items, y: r.y, h, text: t.replace(/\s+/g, ' ').trim(), x: items[0].x, x2: Math.max(...items.map(it => it.x + it.w)), lo: Math.min(...items.map(it => it.y)) - h * 0.3, hi: Math.max(...items.map(it => it.y + it.h)) };
+    };
+    const out = [];
+    for (const r of P.rows) {
+      if (!two) { out.push(piece(r, r.items, 'F')); continue; }
+      const q = split(r);
+      if (q > 0) { out.push(piece(r, r.items.slice(0, q), 'L'), piece(r, r.items.slice(q), 'R')); continue; }
+      out.push(piece(r, r.items, r.x2 < mid + 4 ? 'L' : r.x > mid - 4 ? 'R' : 'F'));
+    }
+    P.mid = mid; P.two = two;
+    return (P.crows = out);
+  }
+
+  async function figure(pdf, kind, num, pageHint, top) {
+    let D = local.get(pdf);
+    if (!D) { D = { pdf, url: '', pages: {} }; local.set(pdf, D); }
+    kind = /^tab/i.test(kind) ? 'table' : 'figure';
+    const N = num ? esc(String(num)).replace(/\\\./g, '\\s?\\.\\s?') : String.raw`(?:[A-Z]\.)?\d+(?:\.\d+)?[a-z]?`;
+    const re = new RegExp(String.raw`^(?:${CAP[kind]})\s?~?\s?(${N})(?![\d.]\d)\s*([.:|—–-]|$|\s+[A-Z(])`, 'i');
+    const order = []; for (let i = 1; i <= pdf.numPages; i++) order.push(i);
+    if (pageHint) order.sort((a, b) => Math.abs(a - pageHint) - Math.abs(b - pageHint) || a - b);
+    const cands = [];
+    for (const i of order.slice(0, num ? order.length : 1)) {
+      const P = await page(D, i);
+      crows(P).forEach(r => {
+        const m = r.text.match(re); if (!m) return;
+        if (top != null && i === pageHint && r.y > top + 4) return;
+        let sc = /[.:|—–-]/.test(m[2]) ? 3 : /^\s+[A-Z(]$/.test(m[2]) || !m[2] ? 1 : -9;
+        if (r.h < P.body - 0.3) sc += 1;
+        if (pageHint === i) sc += 1;
+        cands.push({ P, r, sc, as: (kind === 'table' ? 'Table ' : 'Figure ') + m[1].replace(/\s/g, '') });
+      });
+      if (!num && cands.length) break;
+    }
+    if (!cands.length) return { found: false };
+    for (const c of cands.slice(0, 10)) { await page(D, c.P.i, true); if ((c.r.items[0].k || '').includes('head')) c.sc += 2; }
+    if (top != null && !num) cands.sort((a, b) => b.r.y - a.r.y);
+    else cands.sort((a, b) => b.sc - a.sc || a.P.i - b.P.i);
+    const c = cands[0], P = c.P;
+    if (c.sc < 2 && !(top != null && !num)) return { found: false };
+    const col = c.r.col, mid = P.mid;
+    const span = col === 'F' && P.two;
+    const rows = crows(P).filter(r => col === 'F' ? true : r.col === col || r.col === 'F').filter(r => !isFurniture(r.src, P, P.rows.indexOf(r.src))).sort((a, b) => b.y - a.y);
+    const k = rows.indexOf(c.r);
+    const cw = col === 'L' ? mid - P.left : col === 'R' ? P.right - mid : P.right - P.left;
+    const cap = [c.r], ch = c.r.h;
+    for (let j = k + 1; j < rows.length && cap.length < 12; j++) {
+      const r = rows[j], prev = cap[cap.length - 1];
+      if (prev.y - r.y > ch * 1.6 || Math.abs(r.h - ch) > 1.2) break;
+      if (Math.abs(r.x - cap[0].x) > 3 || prev.x2 - prev.x < cw * 0.6) break;
+      cap.push(r);
+    }
+    const prose = r => r.h >= P.body * 0.9 && r.text.length > (P.two ? 30 : 45) && (r.x2 - r.x) > (span ? (P.right - P.left) * 0.4 : cw * 0.6) &&
+      !r.items.some((it, q) => q && it.x - (r.items[q - 1].x + r.items[q - 1].w) > r.h * 2.5);
+    const capTop = Math.max(...cap.map(r => r.hi)) + 2, capBot = Math.min(...cap.map(r => r.lo)) - 2;
+    const above = rows.slice(0, k), below = rows.slice(k + cap.length);
+    const lastProseAbove = [...above].reverse().find(r => prose(r) && (!span || r.col === 'F' || true)), firstProseBelow = below.find(prose);
+    const tableBelow = kind === 'table' && below.length && !prose(below[0]);
+    let t, b;
+    if (tableBelow) {
+      t = capTop;
+      const end = firstProseBelow ? firstProseBelow.hi + 3 : Math.min(...below.map(r => r.lo));
+      b = Math.max(end, capBot - P.vp.height * 0.55);
+    } else {
+      const pageTop = above.length ? Math.max(...above.map(r => r.hi)) + 4 : P.vp.height - 36;
+      t = Math.min(lastProseAbove ? lastProseAbove.lo - 1 : pageTop, capTop + P.vp.height * 0.6);
+      b = capBot;
+    }
+    if (t - b < 20) return { found: false };
+    let left = col === 'R' ? mid : P.left, right = col === 'L' ? mid : P.right;
+    if (col !== 'F') { const inCol = rows.filter(r => r.y <= t + 2 && r.y >= b - 2 && r.col === col); if (inCol.length) { left = Math.min(...inCol.map(r => r.x)); right = Math.max(...inCol.map(r => r.x2)); } }
+    left = Math.min(left, ...cap.map(r => r.x)); right = Math.max(right, ...cap.map(r => r.x2));
+    if (col === 'F') { left = Math.min(left, P.left); right = Math.max(right, P.right); }
+    return { found: true, page: P.i, top: t, as: c.as, segs: [{ page: P.i, left, right, P, top: t, bottom: b }], text: cap.map(r => r.text).join('\n') };
+  }
+
+  async function isPaper(url, rec) {
+    if (!rec || !rec.title || typeof Ref === 'undefined') return true;
+    const D = await open(url), P = await page(D, 1);
+    const head = P.rows.slice(0, 45).map(r => r.text).join(' . ');
+    const t = Ref.titleIn(head, rec.title);
+    const fam = rec.authors && rec.authors[0] && Ref.norm(rec.authors[0].family || '').split(' ').pop();
+    const au = !fam || Ref.norm(head).split(' ').includes(fam) || (D.pdf.numPages > 1 && Ref.norm((await page(D, 2)).rows.map(r => r.text).join(' ')).split(' ').includes(fam));
+    return t.ratio >= 0.8 && au;
+  }
+
+  async function render(res, width, { isCurrent = () => true, onTask = () => {} } = {}) {
+    const out = [];
     for (const s of res.segs) {
-      const x0 = Math.max(0, s.left - 8), x1 = Math.min(s.P.vp.width, s.right + 8);
-      const scale = width / (x1 - x0), vp = s.P.pg.getViewport({ scale: scale * dpr });
-      const full = document.createElement('canvas'); full.width = Math.ceil(vp.width); full.height = Math.ceil(vp.height);
-      await s.P.pg.render({ canvasContext: full.getContext('2d'), viewport: vp }).promise;
-      const [ax, ay] = vp.convertToViewportPoint(x0, s.top), [bx, by] = vp.convertToViewportPoint(x1, s.bottom);
-      const sx = Math.max(0, Math.floor(Math.min(ax, bx))), sy = Math.max(0, Math.floor(Math.min(ay, by)));
-      const w = Math.min(full.width - sx, Math.ceil(Math.abs(bx - ax))), h = Math.min(full.height - sy, Math.ceil(Math.abs(by - ay)));
+      if (!isCurrent()) return [];
+      const pg = s.P.pg, bounds = pg.view || [0, 0, s.P.vp.width, s.P.vp.height];
+      const x0 = Math.max(bounds[0], s.left - 8), x1 = Math.min(bounds[2], s.right + 8);
+      const top = Math.min(bounds[3], s.top), bottom = Math.max(bounds[1], s.bottom);
+      if (x1 <= x0 || top <= bottom) continue;
+      const scale = width / (x1 - x0);
+      const area = (x1 - x0) * (top - bottom) * scale * scale;
+      const dpr = Math.min(Math.max(devicePixelRatio || 1, 2), 3, Math.sqrt(20e6 / Math.max(1, area)));
+      const vp = pg.getViewport({ scale: scale * dpr });
+      const rect = vp.convertToViewportRectangle([x0, bottom, x1, top]);
+      const sx = Math.floor(Math.min(rect[0], rect[2])), sy = Math.floor(Math.min(rect[1], rect[3]));
+      const w = Math.ceil(Math.max(rect[0], rect[2])) - sx, h = Math.ceil(Math.max(rect[1], rect[3])) - sy;
       if (w < 4 || h < 4) continue;
       const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
-      cv.getContext('2d').drawImage(full, sx, sy, w, h, 0, 0, w, h);
+      const task = pg.render({ canvasContext: cv.getContext('2d'), viewport: vp, transform: [1, 0, 0, 1, -sx, -sy] });
+      onTask(task);
+      try { await task.promise; } catch (e) { if (!isCurrent()) return []; throw e; }
+      if (!isCurrent()) return [];
       cv.style.width = (w / dpr) + 'px'; cv.style.height = (h / dpr) + 'px';
       cv.dataset.page = s.page;
       out.push(cv);
@@ -331,5 +456,5 @@ const Loc = (() => {
     return out;
   }
 
-  return { parse, after, label, statement, at, render, open, _page: page };
+  return { parse, after, label, statement, at, figure, isPaper, render, open, _page: page };
 })();
