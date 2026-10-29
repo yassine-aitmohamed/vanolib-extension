@@ -3,6 +3,7 @@
 <h1 align="center">VanoLib Reader</h1>
 <p align="center"><b>Un meilleur lecteur PDF pour les articles, directement dans votre navigateur.</b><br>
 Cliquez sur une citation et voyez la référence aussitôt, et même le lemme exact qu'elle désigne. Surlignez, annotez, gardez pour plus tard, lisez la nuit.</p>
+<p align="center"><a href="https://github.com/yassine-aitmohamed/vanolib-extension/actions/workflows/checks.yml"><img src="https://github.com/yassine-aitmohamed/vanolib-extension/actions/workflows/checks.yml/badge.svg" alt="Checks"></a> <a href="https://github.com/yassine-aitmohamed/vanolib-extension/releases/latest"><img src="https://img.shields.io/github/v/release/yassine-aitmohamed/vanolib-extension?color=4c6ef5" alt="Release"></a> <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT"></a> <img src="https://img.shields.io/badge/Chrome%20%7C%20Edge%20%7C%20Brave-supported-555" alt="Platforms"></p>
 <p align="center"><a href="README.md">English version</a></p>
 
 ---
@@ -61,6 +62,13 @@ VanoLib Reader fonctionne dans **Google Chrome, Microsoft Edge, Brave, Arc, Viva
 5. Épinglez VanoLib Reader dans la barre d'outils.
 
 Ouvrez n'importe quel lien PDF : il s'ouvre dans VanoLib Reader. Pour lire les PDF de votre disque, ouvrez les **Détails** de l'extension et activez **Autoriser l'accès aux URL de fichier**.
+
+## Auteur
+
+VanoLib Reader est écrit et maintenu par **Yassine Ait Mohamed**, doctorant en mathématiques à l'Université de Sherbrooke. C'est d'abord un outil pour ma propre recherche, partagé dans l'espoir qu'il serve à d'autres.
+
+- Site : [yassine-aitmohamed.github.io](https://yassine-aitmohamed.github.io)
+- Bugs et idées : [ouvrir une issue](https://github.com/yassine-aitmohamed/vanolib-extension/issues)
 
 ## Licence
 

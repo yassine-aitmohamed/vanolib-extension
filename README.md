@@ -3,6 +3,7 @@
 <h1 align="center">VanoLib Reader</h1>
 <p align="center"><b>A better PDF reader for papers, right in your browser.</b><br>
 Click a citation and see the reference instantly, and even the exact lemma it points to. Highlight, annotate, save for later, read at night.</p>
+<p align="center"><a href="https://github.com/yassine-aitmohamed/vanolib-extension/actions/workflows/checks.yml"><img src="https://github.com/yassine-aitmohamed/vanolib-extension/actions/workflows/checks.yml/badge.svg" alt="Checks"></a> <a href="https://github.com/yassine-aitmohamed/vanolib-extension/releases/latest"><img src="https://img.shields.io/github/v/release/yassine-aitmohamed/vanolib-extension?color=4c6ef5" alt="Release"></a> <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT"></a> <img src="https://img.shields.io/badge/Chrome%20%7C%20Edge%20%7C%20Brave-supported-555" alt="Platforms"></p>
 <p align="center"><a href="README.fr.md">Version française</a></p>
 
 ---
@@ -86,6 +87,13 @@ To update, download the new version, replace the folder, and click ↻ **Reload*
 - If Google Scholar PDF Reader is also installed, turn one of them off so that both do not open the same PDF.
 - Turn automatic opening on or off from the toolbar icon.
 - The VanoAtlas port (default 8770) can be changed from the toolbar icon.
+
+## Author
+
+VanoLib Reader is written and maintained by **Yassine Ait Mohamed**, PhD student in mathematics at the Université de Sherbrooke. It started as a tool for my own research and is shared in the hope that it is useful to others.
+
+- Website: [yassine-aitmohamed.github.io](https://yassine-aitmohamed.github.io)
+- Bug reports and ideas: [open an issue](https://github.com/yassine-aitmohamed/vanolib-extension/issues)
 
 ## License
 
